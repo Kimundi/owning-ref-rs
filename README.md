@@ -5,11 +5,7 @@ owning-ref-rs
 
 A library for creating references that carry their owner with them.
 
-Using this library, it is possible
-Using this macro, it is possible to have `static`s that require code to be
-executed at runtime in order to be initialized.
-This includes anything requiring heap allocations, like vectors or hash maps,
-as well as anything that requires function calls to be computed.
+For more details, see the [docs](http://kimundi.github.io/owning-ref-rs/owning_ref/index.html).
 
 # Getting Started
 
@@ -32,8 +28,19 @@ git = "https://github.com/Kimundi/owning-ref-rs"
 
 ```rust
 extern crate owning_ref;
+use owning_ref::RcRef;
 
 fn main() {
+    // Let's create a few reference counted slices that point to the same memory:
 
+    let rc: RcRef<[i32]> = RcRef::new(Rc::new([1, 2, 3, 4]) as Rc<[i32]>);
+    assert_eq!(&*rc, &[1, 2, 3, 4]);
+
+    let rc_a: RcRef<[i32]> = rc.clone().map(|s| &s[0..2]);
+    let rc_b = rc.clone().map(|s| &s[1..3]);
+    let rc_c = rc.clone().map(|s| &s[2..4]);
+    assert_eq!(&*rc_a, &[1, 2]);
+    assert_eq!(&*rc_b, &[2, 3]);
+    assert_eq!(&*rc_c, &[3, 4]);
 }
 ```

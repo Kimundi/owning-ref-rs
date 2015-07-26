@@ -6,6 +6,7 @@ license = "MIT"
 
 description = "A library for creating references that carry their owner with them."
 readme = "README.md"
+documentation = "http://kimundi.github.io/owning-ref-rs/owning_ref/index.html"
 
 repository = "https://github.com/Kimundi/owning-ref-rs"
 keywords = ["reference", "sibling field"]
