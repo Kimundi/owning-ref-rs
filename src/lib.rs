@@ -307,6 +307,12 @@ impl<O, T: ?Sized> Deref for OwningRef<O, T> {
     }
 }
 
+impl<O, T: ?Sized> AsRef<T> for OwningRef<O, T> {
+    fn as_ref(&self) -> &T {
+        &*self
+    }
+}
+
 impl<O, T: ?Sized> From<O> for OwningRef<O, T>
     where O: StableAddress, O: Deref<Target = T>,
 {
