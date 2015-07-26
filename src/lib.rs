@@ -126,19 +126,19 @@ unsafe impl StableAddress for String {}
 unsafe impl<T: ?Sized> StableAddress for Rc<T> {}
 #[cfg(feature = "nightly")]
 unsafe impl<T: ?Sized> StableAddress for Arc<T> {}
-#[cfg(not(feature = "nightly"))]
-unsafe impl<T> StableAddress for Rc<T> {}
-#[cfg(not(feature = "nightly"))]
-unsafe impl<T> StableAddress for Arc<T> {}
-
 #[cfg(feature = "nightly")]
 unsafe impl<T: ?Sized> CloneStableAddress for Rc<T> {}
 #[cfg(feature = "nightly")]
 unsafe impl<T: ?Sized> CloneStableAddress for Arc<T> {}
+
 #[cfg(not(feature = "nightly"))]
 unsafe impl<T> CloneStableAddress for Rc<T> {}
 #[cfg(not(feature = "nightly"))]
 unsafe impl<T> CloneStableAddress for Arc<T> {}
+#[cfg(not(feature = "nightly"))]
+unsafe impl<T> StableAddress for Rc<T> {}
+#[cfg(not(feature = "nightly"))]
+unsafe impl<T> StableAddress for Arc<T> {}
 
 pub type BoxRef<T, U = T> = OwningRef<Box<T>, U>;
 pub type VecRef<T, U = T> = OwningRef<Vec<T>, U>;
@@ -150,10 +150,12 @@ unsafe impl<'a, T: 'a> IntoErased for Box<T> {
     type Erased = Box<Erased + 'a>;
     fn into_erased(self) -> Self::Erased { self }
 }
+#[cfg(feature = "nightly")]
 unsafe impl<'a, T: 'a> IntoErased for Rc<T> {
     type Erased = Rc<Erased + 'a>;
     fn into_erased(self) -> Self::Erased { self }
 }
+#[cfg(feature = "nightly")]
 unsafe impl<'a, T: 'a> IntoErased for Arc<T> {
     type Erased = Arc<Erased + 'a>;
     fn into_erased(self) -> Self::Erased { self }
