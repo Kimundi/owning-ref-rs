@@ -8,44 +8,54 @@ pub struct OwningRef<O, T: ?Sized> {
     reference: *const T,
 }
 
+pub trait Erased {}
+impl<T> Erased for T {}
+
+pub unsafe trait IntoErased {
+    type Erased;
+    fn into_erased(self) -> Self::Erased;
+}
+
 /////////////////////////////////////////////////////////////////////////////
 // inherent API
 /////////////////////////////////////////////////////////////////////////////
 
-impl<O, T: ?Sized> OwningRef<O, T>
-    where O: StableAddress, O: Deref<Target = T>,
-{
-    pub fn new(o: O) -> Self {
-        let ptr: *const T = &*o;
+impl<O, T: ?Sized> OwningRef<O, T> {
+    pub fn new(o: O) -> Self
+        where O: StableAddress,
+        O: Deref<Target = T>,
+    {
         OwningRef {
+            reference: &*o,
             owner: o,
-            reference: ptr,
         }
     }
-}
 
-impl<O, T: ?Sized> OwningRef<O, T> {
+    pub fn map<F, U: ?Sized>(self, f: F) -> OwningRef<O, U>
+        where O: StableAddress,
+              F: FnOnce(&T) -> &U
+    {
+        OwningRef {
+            reference: f(&self),
+            owner: self.owner,
+        }
+    }
+
+    pub fn erase_owner(self) -> OwningRef<O::Erased, T>
+        where O: IntoErased,
+    {
+        OwningRef {
+            reference: self.reference,
+            owner: self.owner.into_erased(),
+        }
+    }
+
     pub fn owner(&self) -> &O {
         &self.owner
     }
 
     pub fn into_inner(self) -> O {
         self.owner
-    }
-}
-
-impl<O, T: ?Sized> OwningRef<O, T>
-    where O: StableAddress,
-{
-    pub fn map<F, U: ?Sized>(self, f: F) -> OwningRef<O, U>
-        where F: FnOnce(&T) -> &U
-    {
-        let ptr = f(&*self) as *const _;
-
-        OwningRef {
-            owner: self.owner,
-            reference: ptr,
-        }
     }
 }
 
@@ -113,8 +123,9 @@ unsafe impl<T: ?Sized> StableAddress for Box<T> {}
 unsafe impl<T> StableAddress for Vec<T> {}
 unsafe impl StableAddress for String {}
 unsafe impl<T: ?Sized> StableAddress for Rc<T> {}
-unsafe impl<T: ?Sized> CloneStableAddress for Rc<T> {}
 unsafe impl<T: ?Sized> StableAddress for Arc<T> {}
+
+unsafe impl<T: ?Sized> CloneStableAddress for Rc<T> {}
 unsafe impl<T: ?Sized> CloneStableAddress for Arc<T> {}
 
 pub type BoxRef<T, U = T> = OwningRef<Box<T>, U>;
@@ -123,20 +134,28 @@ pub type StringRef = OwningRef<String, str>;
 pub type RcRef<T, U = T> = OwningRef<Rc<T>, U>;
 pub type ArcRef<T, U = T> = OwningRef<Arc<T>, U>;
 
-/*
-FIXME: Find a nice way to construct these:
+unsafe impl<'a, T: 'a> IntoErased for Box<T> {
+    type Erased = Box<Erased + 'a>;
+    fn into_erased(self) -> Self::Erased { self }
+}
+unsafe impl<'a, T: 'a> IntoErased for Rc<T> {
+    type Erased = Rc<Erased + 'a>;
+    fn into_erased(self) -> Self::Erased { self }
+}
+unsafe impl<'a, T: 'a> IntoErased for Arc<T> {
+    type Erased = Arc<Erased + 'a>;
+    fn into_erased(self) -> Self::Erased { self }
+}
 
-pub trait Erased {}
-impl<T: ?Sized> Erased for T {}
-
-pub type BoxRefEr<U> = OwningRef<Box<Erased>, U>;
-pub type RcRefEr<U> = OwningRef<Rc<T>, U>;
-pub type ArcRefEr<U> = OwningRef<Arc<T>, U>;
-*/
+pub type ErasedBoxRef<U> = OwningRef<Box<Erased>, U>;
+pub type ErasedRcRef<U> = OwningRef<Rc<Erased>, U>;
+pub type ErasedArcRef<U> = OwningRef<Arc<Erased>, U>;
 
 #[cfg(test)]
 mod tests {
-    use super::{OwningRef, BoxRef, VecRef, StringRef, RcRef, ArcRef};
+    use super::OwningRef;
+    use super::{BoxRef, VecRef, StringRef, RcRef, ArcRef};
+    use super::{Erased, ErasedBoxRef};
 
     use std::rc::Rc;
     use std::sync::Arc;
@@ -223,6 +242,30 @@ mod tests {
         let or = or.map(|x| &x[..5]);
         let s = format!("{:?}", or);
         assert_eq!(&s, "OwningRef { owner: \"hello world\", reference: \"hello\" }");
+    }
+
+    #[test]
+    fn erased_owner() {
+        let o1: BoxRef<Example, str> = BoxRef::new(Box::new(example()))
+            .map(|x| &x.1[..]);
+
+        let o2: BoxRef<String, str> = BoxRef::new(Box::new(example().1))
+            .map(|x| &x[..]);
+
+        let os: Vec<ErasedBoxRef<str>> = vec![o1.erase_owner(), o2.erase_owner()];
+        assert!(os.iter().all(|e| &e[..] == "hello world"));
+    }
+
+    #[test]
+    fn non_static_erased_owner() {
+        let foo = [413, 612];
+        let bar = &foo;
+
+        let o: BoxRef<&[i32; 2]> = Box::new(bar).into();
+        let o: BoxRef<&[i32; 2], i32> = o.map(|a: &&[i32; 2]| &a[0]);
+        let o: BoxRef<Erased, i32> = o.erase_owner();
+
+        assert_eq!(*o, 413);
     }
 
     /////////////////////////////////////////////////////////////////////////
