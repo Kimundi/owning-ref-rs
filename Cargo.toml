@@ -9,3 +9,6 @@ readme = "README.md"
 
 repository = "https://github.com/Kimundi/owning-ref-rs"
 keywords = ["reference", "sibling field"]
+
+[features]
+nightly = []

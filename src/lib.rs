@@ -122,11 +122,23 @@ use std::sync::Arc;
 unsafe impl<T: ?Sized> StableAddress for Box<T> {}
 unsafe impl<T> StableAddress for Vec<T> {}
 unsafe impl StableAddress for String {}
+#[cfg(feature = "nightly")]
 unsafe impl<T: ?Sized> StableAddress for Rc<T> {}
+#[cfg(feature = "nightly")]
 unsafe impl<T: ?Sized> StableAddress for Arc<T> {}
+#[cfg(not(feature = "nightly"))]
+unsafe impl<T> StableAddress for Rc<T> {}
+#[cfg(not(feature = "nightly"))]
+unsafe impl<T> StableAddress for Arc<T> {}
 
+#[cfg(feature = "nightly")]
 unsafe impl<T: ?Sized> CloneStableAddress for Rc<T> {}
+#[cfg(feature = "nightly")]
 unsafe impl<T: ?Sized> CloneStableAddress for Arc<T> {}
+#[cfg(not(feature = "nightly"))]
+unsafe impl<T> CloneStableAddress for Rc<T> {}
+#[cfg(not(feature = "nightly"))]
+unsafe impl<T> CloneStableAddress for Arc<T> {}
 
 pub type BoxRef<T, U = T> = OwningRef<Box<T>, U>;
 pub type VecRef<T, U = T> = OwningRef<Vec<T>, U>;
@@ -318,6 +330,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "nightly")]
     fn rc_ref() {
         // Creating many subslices that share ownership of the backing storage
 
@@ -337,6 +350,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "nightly")]
     fn arc_ref() {
         // Calculate the sum of a atomic shared slice in parallel
 
