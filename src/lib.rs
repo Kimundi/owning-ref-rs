@@ -15,13 +15,13 @@ which allows for less verbose type signatures. For example, `BoxRef<T>` instead 
 
 # Examples
 
+## Caching a reference to a struct field
+
 ```
 extern crate owning_ref;
 use owning_ref::BoxRef;
 
 fn main() {
-    // Caching a reference to a struct field
-
     struct Foo {
         tag: u32,
         x: u16,
@@ -43,31 +43,34 @@ fn main() {
 }
 ```
 
+## Caching a reference to an entry in a vector
+
 ```
 extern crate owning_ref;
 use owning_ref::VecRef;
 
 fn main() {
-    // Cache a reference to an entry in a vector
-
     let v = VecRef::new(vec![1, 2, 3, 4, 5]).map(|v| &v[3]);
     assert_eq!(*v, 4);
 }
 ```
+
+## Caching a subslice of a String
 
 ```
 extern crate owning_ref;
 use owning_ref::StringRef;
 
 fn main() {
-    // Caching a subslice of a String
-
     let s = StringRef::new("hello world".to_owned())
         .map(|s| s.split(' ').nth(1).unwrap());
 
     assert_eq!(&*s, "world");
 }
 ```
+
+## Reference counted slices that share ownership of the backing storage
+
 ```
 extern crate owning_ref;
 use owning_ref::RcRef;
@@ -77,8 +80,6 @@ fn main() {
 # fn rc_ref() {}
 # #[cfg(feature = "nightly")]
 # fn rc_ref() {
-    // Creating many subslices that share ownership of the backing storage
-
     let rc: RcRef<[i32]> = RcRef::new(Rc::new([1, 2, 3, 4]) as Rc<[i32]>);
     assert_eq!(&*rc, &[1, 2, 3, 4]);
 
@@ -96,6 +97,8 @@ fn main() {
 }
 ```
 
+## Atomic reference counted slices that share ownership of the backing storage
+
 ```
 extern crate owning_ref;
 use owning_ref::ArcRef;
@@ -105,8 +108,6 @@ fn main() {
 # fn arc_ref() {}
 # #[cfg(feature = "nightly")]
 # fn arc_ref() {
-    // Calculate the sum of a atomic shared slice in parallel
-
     use std::thread;
 
     fn par_sum(rc: ArcRef<[i32]>) -> i32 {
