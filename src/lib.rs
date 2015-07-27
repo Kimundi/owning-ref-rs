@@ -15,6 +15,28 @@ which allows for less verbose type signatures. For example, `BoxRef<T>` instead 
 
 # Examples
 
+## Basics
+
+```
+extern crate owning_ref;
+use owning_ref::BoxRef;
+
+fn main() {
+    // Create an array owned by a Box.
+    let arr = Box::new([1, 2, 3, 4]) as Box<[i32]>;
+
+    // Transfer into a BoxRef.
+    let arr: BoxRef<[i32]> = BoxRef::new(arr);
+    assert_eq!(&*arr, &[1, 2, 3, 4]);
+
+    // We can slice the array without losing ownership or changing type.
+    let arr: BoxRef<[i32]> = arr.map(|arr| &arr[1..3]);
+    assert_eq!(&*arr, &[2, 3]);
+
+    // Also works for Arc, Rc, String and Vec!
+}
+```
+
 ## Caching a reference to a struct field
 
 ```

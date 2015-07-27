@@ -28,19 +28,20 @@ git = "https://github.com/Kimundi/owning-ref-rs"
 
 ```rust
 extern crate owning_ref;
-use owning_ref::RcRef;
+use owning_ref::BoxRef;
 
 fn main() {
-    // Let's create a few reference counted slices that point to the same memory:
+    // Create an array owned by a Box.
+    let arr = Box::new([1, 2, 3, 4]) as Box<[i32]>;
 
-    let rc: RcRef<[i32]> = RcRef::new(Rc::new([1, 2, 3, 4]) as Rc<[i32]>);
-    assert_eq!(&*rc, &[1, 2, 3, 4]);
+    // Transfer into a BoxRef.
+    let arr: BoxRef<[i32]> = BoxRef::new(arr);
+    assert_eq!(&*arr, &[1, 2, 3, 4]);
 
-    let rc_a: RcRef<[i32]> = rc.clone().map(|s| &s[0..2]);
-    let rc_b = rc.clone().map(|s| &s[1..3]);
-    let rc_c = rc.clone().map(|s| &s[2..4]);
-    assert_eq!(&*rc_a, &[1, 2]);
-    assert_eq!(&*rc_b, &[2, 3]);
-    assert_eq!(&*rc_c, &[3, 4]);
+    // We can slice the array without losing ownership or changing type.
+    let arr: BoxRef<[i32]> = arr.map(|arr| &arr[1..3]);
+    assert_eq!(&*arr, &[2, 3]);
+
+    // Also works for Arc, Rc, String and Vec!
 }
 ```
