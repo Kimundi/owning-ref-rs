@@ -156,13 +156,14 @@ use std::cell::{RefCell, Ref};
 
 fn main() {
     let refcell = RefCell::new((1, 2, 3, 4));
+    // Also works with Mutex and RwLock
 
     let refref = {
         let refref = RefRef::new(refcell.borrow()).map(|x| &x.3);
         assert_eq!(*refref, 4);
 
         // We move the RAII lock and the reference to one of
-        // the subfileds in the data it guards here:
+        // the subfields in the data it guards here:
         refref
     };
 
@@ -571,5 +572,64 @@ mod tests {
         let o: BoxRef<Erased, i32> = o.erase_owner();
 
         assert_eq!(*o, 413);
+    }
+
+    #[test]
+    fn raii_locks() {
+        use super::{RefRef, RefMutRef};
+        use std::cell::RefCell;
+        use super::{MutexGuardRef, RwLockReadGuardRef, RwLockWriteGuardRef};
+        use std::sync::{Mutex, RwLock};
+
+        {
+            let a = RefCell::new(1);
+            let a = {
+                let a = RefRef::new(a.borrow());
+                assert_eq!(*a, 1);
+                a
+            };
+            assert_eq!(*a, 1);
+            drop(a);
+        }
+        {
+            let a = RefCell::new(1);
+            let a = {
+                let a = RefMutRef::new(a.borrow_mut());
+                assert_eq!(*a, 1);
+                a
+            };
+            assert_eq!(*a, 1);
+            drop(a);
+        }
+        {
+            let a = Mutex::new(1);
+            let a = {
+                let a = MutexGuardRef::new(a.lock().unwrap());
+                assert_eq!(*a, 1);
+                a
+            };
+            assert_eq!(*a, 1);
+            drop(a);
+        }
+        {
+            let a = RwLock::new(1);
+            let a = {
+                let a = RwLockReadGuardRef::new(a.read().unwrap());
+                assert_eq!(*a, 1);
+                a
+            };
+            assert_eq!(*a, 1);
+            drop(a);
+        }
+        {
+            let a = RwLock::new(1);
+            let a = {
+                let a = RwLockWriteGuardRef::new(a.write().unwrap());
+                assert_eq!(*a, 1);
+                a
+            };
+            assert_eq!(*a, 1);
+            drop(a);
+        }
     }
 }
