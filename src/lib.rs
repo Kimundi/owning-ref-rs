@@ -96,12 +96,9 @@ fn main() {
 ```
 extern crate owning_ref;
 use owning_ref::RcRef;
+use std::rc::Rc;
 
 fn main() {
-# #[cfg(not(feature = "nightly"))]
-# fn rc_ref() {}
-# #[cfg(feature = "nightly")]
-# fn rc_ref() {
     let rc: RcRef<[i32]> = RcRef::new(Rc::new([1, 2, 3, 4]) as Rc<[i32]>);
     assert_eq!(&*rc, &[1, 2, 3, 4]);
 
@@ -114,8 +111,6 @@ fn main() {
 
     let rc_c_a = rc_c.clone().map(|s| &s[1]);
     assert_eq!(&*rc_c_a, &4);
-# }
-# rc_ref();
 }
 ```
 
@@ -124,12 +119,9 @@ fn main() {
 ```
 extern crate owning_ref;
 use owning_ref::ArcRef;
+use std::sync::Arc;
 
 fn main() {
-# #[cfg(not(feature = "nightly"))]
-# fn arc_ref() {}
-# #[cfg(feature = "nightly")]
-# fn arc_ref() {
     use std::thread;
 
     fn par_sum(rc: ArcRef<[i32]>) -> i32 {
@@ -152,8 +144,6 @@ fn main() {
     let rc: ArcRef<[i32]> = rc.into();
 
     assert_eq!(par_sum(rc), 10);
-# }
-# arc_ref();
 }
 ```
 */
@@ -385,23 +375,10 @@ use std::sync::Arc;
 unsafe impl<T: ?Sized> StableAddress for Box<T> {}
 unsafe impl<T> StableAddress for Vec<T> {}
 unsafe impl StableAddress for String {}
-#[cfg(feature = "nightly")]
 unsafe impl<T: ?Sized> StableAddress for Rc<T> {}
-#[cfg(feature = "nightly")]
 unsafe impl<T: ?Sized> StableAddress for Arc<T> {}
-#[cfg(feature = "nightly")]
 unsafe impl<T: ?Sized> CloneStableAddress for Rc<T> {}
-#[cfg(feature = "nightly")]
 unsafe impl<T: ?Sized> CloneStableAddress for Arc<T> {}
-
-#[cfg(not(feature = "nightly"))]
-unsafe impl<T> CloneStableAddress for Rc<T> {}
-#[cfg(not(feature = "nightly"))]
-unsafe impl<T> CloneStableAddress for Arc<T> {}
-#[cfg(not(feature = "nightly"))]
-unsafe impl<T> StableAddress for Rc<T> {}
-#[cfg(not(feature = "nightly"))]
-unsafe impl<T> StableAddress for Arc<T> {}
 
 /// Typedef of a owning reference that uses a `Box` as the owner.
 pub type BoxRef<T, U = T> = OwningRef<Box<T>, U>;
@@ -418,12 +395,10 @@ unsafe impl<'a, T: 'a> IntoErased for Box<T> {
     type Erased = Box<Erased + 'a>;
     fn into_erased(self) -> Self::Erased { self }
 }
-#[cfg(feature = "nightly")]
 unsafe impl<'a, T: 'a> IntoErased for Rc<T> {
     type Erased = Rc<Erased + 'a>;
     fn into_erased(self) -> Self::Erased { self }
 }
-#[cfg(feature = "nightly")]
 unsafe impl<'a, T: 'a> IntoErased for Arc<T> {
     type Erased = Arc<Erased + 'a>;
     fn into_erased(self) -> Self::Erased { self }
@@ -432,10 +407,8 @@ unsafe impl<'a, T: 'a> IntoErased for Arc<T> {
 /// Typedef of a owning reference that uses an erased `Box` as the owner.
 pub type ErasedBoxRef<U> = OwningRef<Box<Erased>, U>;
 /// Typedef of a owning reference that uses an erased `Rc` as the owner.
-#[cfg(feature = "nightly")]
 pub type ErasedRcRef<U> = OwningRef<Rc<Erased>, U>;
 /// Typedef of a owning reference that uses an erased `Arc` as the owner.
-#[cfg(feature = "nightly")]
 pub type ErasedArcRef<U> = OwningRef<Arc<Erased>, U>;
 
 #[cfg(test)]
