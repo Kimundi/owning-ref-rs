@@ -146,6 +146,33 @@ fn main() {
     assert_eq!(par_sum(rc), 10);
 }
 ```
+
+## References into RAII locks
+
+```
+extern crate owning_ref;
+use owning_ref::RefRef;
+use std::cell::{RefCell, Ref};
+
+fn main() {
+    let refcell = RefCell::new((1, 2, 3, 4));
+
+    let refref = {
+        let refref = RefRef::new(refcell.borrow()).map(|x| &x.3);
+        assert_eq!(*refref, 4);
+
+        // We move the RAII lock and the reference to one of
+        // the subfileds in the data it guards here:
+        refref
+    };
+
+    assert_eq!(*refref, 4);
+
+    drop(refref);
+
+    assert_eq!(*refcell.borrow(), (1, 2, 3, 4));
+}
+```
 */
 
 /// Marker trait for expressing that the memory address of the value
