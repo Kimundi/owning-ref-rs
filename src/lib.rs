@@ -371,14 +371,23 @@ impl Debug for Erased {
 use std::boxed::Box;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::{MutexGuard, RwLockReadGuard, RwLockWriteGuard};
+use std::cell::{Ref, RefMut};
 
 unsafe impl<T: ?Sized> StableAddress for Box<T> {}
 unsafe impl<T> StableAddress for Vec<T> {}
 unsafe impl StableAddress for String {}
+
 unsafe impl<T: ?Sized> StableAddress for Rc<T> {}
-unsafe impl<T: ?Sized> StableAddress for Arc<T> {}
 unsafe impl<T: ?Sized> CloneStableAddress for Rc<T> {}
+unsafe impl<T: ?Sized> StableAddress for Arc<T> {}
 unsafe impl<T: ?Sized> CloneStableAddress for Arc<T> {}
+
+unsafe impl<'a, T: ?Sized> StableAddress for Ref<'a, T> {}
+unsafe impl<'a, T: ?Sized> StableAddress for RefMut<'a, T> {}
+unsafe impl<'a, T: ?Sized> StableAddress for MutexGuard<'a, T> {}
+unsafe impl<'a, T: ?Sized> StableAddress for RwLockReadGuard<'a, T> {}
+unsafe impl<'a, T: ?Sized> StableAddress for RwLockWriteGuard<'a, T> {}
 
 /// Typedef of a owning reference that uses a `Box` as the owner.
 pub type BoxRef<T, U = T> = OwningRef<Box<T>, U>;
@@ -386,10 +395,24 @@ pub type BoxRef<T, U = T> = OwningRef<Box<T>, U>;
 pub type VecRef<T, U = T> = OwningRef<Vec<T>, U>;
 /// Typedef of a owning reference that uses a `String` as the owner.
 pub type StringRef = OwningRef<String, str>;
+
 /// Typedef of a owning reference that uses a `Rc` as the owner.
 pub type RcRef<T, U = T> = OwningRef<Rc<T>, U>;
 /// Typedef of a owning reference that uses a `Arc` as the owner.
 pub type ArcRef<T, U = T> = OwningRef<Arc<T>, U>;
+
+/// Typedef of a owning reference that uses a `Ref` as the owner.
+pub type RefRef<'a, T, U = T> = OwningRef<Ref<'a, T>, U>;
+/// Typedef of a owning reference that uses a `RefMut` as the owner.
+pub type RefMutRef<'a, T, U = T> = OwningRef<RefMut<'a, T>, U>;
+/// Typedef of a owning reference that uses a `MutexGuard` as the owner.
+pub type MutexGuardRef<'a, T, U = T> = OwningRef<MutexGuard<'a, T>, U>;
+/// Typedef of a owning reference that uses a `RwLockReadGuard` as the owner.
+pub type RwLockReadGuardRef<'a, T, U = T>
+    = OwningRef<RwLockReadGuard<'a, T>, U>;
+/// Typedef of a owning reference that uses a `RwLockWriteGuard` as the owner.
+pub type RwLockWriteGuardRef<'a, T, U = T>
+    = OwningRef<RwLockWriteGuard<'a, T>, U>;
 
 unsafe impl<'a, T: 'a> IntoErased for Box<T> {
     type Erased = Box<Erased + 'a>;
