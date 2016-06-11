@@ -336,6 +336,8 @@ use std::ops::Deref;
 use std::convert::From;
 use std::fmt::{self, Debug};
 use std::marker::{Send, Sync};
+use std::cmp::{Eq, PartialEq, Ord, PartialOrd, Ordering};
+use std::hash::{Hash, Hasher};
 
 impl<O, T: ?Sized> Deref for OwningRef<O, T> {
     type Target = T;
@@ -389,6 +391,32 @@ unsafe impl<O: Sync, T: ?Sized> Sync for OwningRef<O, T> {}
 impl Debug for Erased {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         write!(f, "<Erased>",)
+    }
+}
+
+impl<O, T: ?Sized> PartialEq for OwningRef<O, T> where T: PartialEq {
+    fn eq(&self, other: &Self) -> bool {
+        (&*self as &T).eq(&*other as &T)
+     }
+}
+
+impl<O, T: ?Sized> Eq for OwningRef<O, T> where T: Eq {}
+
+impl<O, T: ?Sized> PartialOrd for OwningRef<O, T> where T: PartialOrd {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        (&*self as &T).partial_cmp(&*other as &T)
+    }
+}
+
+impl<O, T: ?Sized> Ord for OwningRef<O, T> where T: Ord {
+    fn cmp(&self, other: &Self) -> Ordering {
+        (&*self as &T).cmp(&*other as &T)
+    }
+}
+
+impl<O, T: ?Sized> Hash for OwningRef<O, T> where T: Hash {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        (&*self as &T).hash(state);
     }
 }
 
@@ -465,6 +493,8 @@ pub type ErasedArcRef<U> = OwningRef<Arc<Erased>, U>;
 #[cfg(test)]
 mod tests {
     use super::{OwningRef, BoxRef, Erased, ErasedBoxRef};
+    use std::cmp::{PartialEq, Ord, PartialOrd, Ordering};
+    use std::hash::{Hash, Hasher, SipHasher};
 
     #[derive(Debug, PartialEq)]
     struct Example(u32, String, [u8; 3]);
@@ -631,5 +661,40 @@ mod tests {
             assert_eq!(*a, 1);
             drop(a);
         }
+    }
+
+    #[test]
+    fn eq() {
+        let or1: BoxRef<[u8]> = BoxRef::new(vec![1, 2, 3].into_boxed_slice());
+        let or2: BoxRef<[u8]> = BoxRef::new(vec![1, 2, 3].into_boxed_slice());
+        assert_eq!(or1.eq(&or2), true);
+    }
+
+    #[test]
+    fn cmp() {
+        let or1: BoxRef<[u8]> = BoxRef::new(vec![1, 2, 3].into_boxed_slice());
+        let or2: BoxRef<[u8]> = BoxRef::new(vec![4, 5, 6].into_boxed_slice());
+        assert_eq!(or1.cmp(&or2), Ordering::Less);
+    }
+
+    #[test]
+    fn partial_cmp() {
+        let or1: BoxRef<[u8]> = BoxRef::new(vec![4, 5, 6].into_boxed_slice());
+        let or2: BoxRef<[u8]> = BoxRef::new(vec![1, 2, 3].into_boxed_slice());
+        assert_eq!(or1.partial_cmp(&or2), Some(Ordering::Greater));
+    }
+
+    #[test]
+    fn hash() {
+        let mut h1 = SipHasher::new();
+        let mut h2 = SipHasher::new();
+
+        let or1: BoxRef<[u8]> = BoxRef::new(vec![1, 2, 3].into_boxed_slice());
+        let or2: BoxRef<[u8]> = BoxRef::new(vec![1, 2, 3].into_boxed_slice());
+
+        or1.hash(&mut h1);
+        or2.hash(&mut h2);
+
+        assert_eq!(h1.finish(), h2.finish());
     }
 }
