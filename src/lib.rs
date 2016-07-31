@@ -207,7 +207,7 @@ impl<T> Erased for T {}
 /// Helper trait for erasing the concrete type of what an owner derferences to,
 /// for example `Box<T> -> Box<Erased>`. This would be unneeded with
 /// higher kinded types support in the language.
-pub unsafe trait IntoErased {
+pub unsafe trait IntoErased<'a> {
     /// Owner with the dereference type substituted to `Erased`.
     type Erased;
     /// Perform the type erasure.
@@ -304,8 +304,8 @@ impl<O, T: ?Sized> OwningRef<O, T> {
     ///     assert_eq!(*owning_refs[1], 1);
     /// }
     /// ```
-    pub fn erase_owner(self) -> OwningRef<O::Erased, T>
-        where O: IntoErased,
+    pub fn erase_owner<'a>(self) -> OwningRef<O::Erased, T>
+        where O: IntoErased<'a>,
     {
         OwningRef {
             reference: self.reference,
@@ -442,15 +442,15 @@ pub type RwLockReadGuardRef<'a, T, U = T>
 pub type RwLockWriteGuardRef<'a, T, U = T>
     = OwningRef<RwLockWriteGuard<'a, T>, U>;
 
-unsafe impl<'a, T: 'a> IntoErased for Box<T> {
+unsafe impl<'a, T: 'a> IntoErased<'a> for Box<T> {
     type Erased = Box<Erased + 'a>;
     fn into_erased(self) -> Self::Erased { self }
 }
-unsafe impl<'a, T: 'a> IntoErased for Rc<T> {
+unsafe impl<'a, T: 'a> IntoErased<'a> for Rc<T> {
     type Erased = Rc<Erased + 'a>;
     fn into_erased(self) -> Self::Erased { self }
 }
-unsafe impl<'a, T: 'a> IntoErased for Arc<T> {
+unsafe impl<'a, T: 'a> IntoErased<'a> for Arc<T> {
     type Erased = Arc<Erased + 'a>;
     fn into_erased(self) -> Self::Erased { self }
 }
