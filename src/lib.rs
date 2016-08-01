@@ -462,6 +462,129 @@ pub type ErasedRcRef<U> = OwningRef<Rc<Erased>, U>;
 /// Typedef of a owning reference that uses an erased `Arc` as the owner.
 pub type ErasedArcRef<U> = OwningRef<Arc<Erased>, U>;
 
+/////////////////////////////////////////////////////////////////////////////
+// aref
+/////////////////////////////////////////////////////////////////////////////
+
+type ARefStorage = [usize; 3];
+
+// We can't call drop_in_place directly, see https://github.com/rust-lang/rust/issues/34123
+unsafe fn aref_drop_wrapper<T>(t: *mut ARefStorage) {
+    std::ptr::drop_in_place::<T>(t as *mut _ as *mut T);
+}
+
+/// This wraps a reference `&T` pointing
+/// at something reachable from the owner, while keeping
+/// the ability to move `self` around. Unlike OwningRef,
+/// the owner is completely abstracted, and can't be extracted. 
+///
+/// The owner must be a pointer which is three usizes big or less,
+/// (this size was chosen to make Vec, String, Ref etc fit).
+pub struct ARef<U: ?Sized> {
+    inner: OwningRef<(), U>,
+    owner: ARefStorage,
+    dropfn: unsafe fn (*mut ARefStorage)
+}
+
+impl<U: ?Sized> Drop for ARef<U> {
+    fn drop(&mut self) {
+        unsafe {
+            (self.dropfn)(&mut self.owner);
+        }
+    }
+}
+
+impl<U: ?Sized> Deref for ARef<U> {
+    type Target = U;
+
+    fn deref(&self) -> &U {
+        &*self.inner
+    }
+}
+
+impl<U: ?Sized> AsRef<U> for ARef<U> {
+    fn as_ref(&self) -> &U {
+        &*self.inner
+    }
+}
+
+impl<U: ?Sized> ARef<U> {
+    /// Creates a new reference from an owner
+    /// initialized to the direct dereference of it.
+    ///
+    /// # Example
+    /// ```
+    /// extern crate owning_ref;
+    /// use owning_ref::ARef;
+    ///
+    /// fn main() {
+    ///     let aref = ARef::new(Box::new(42));
+    ///     assert_eq!(*aref, 42);
+    /// }
+    /// ```
+    pub fn new<O>(o: O) -> Self
+        where O: StableAddress,
+              O: Deref<Target = U>,
+    {
+        OwningRef::new(o).into()
+    }
+
+
+    /// Converts `self` into a new reference that points at something reachable
+    /// from the previous one.
+    ///
+    /// This can be a reference to a field of `T`, something reachable from a field of
+    /// `T`, or even something unrelated with a `'static` lifetime.
+    ///
+    /// # Example
+    /// ```
+    /// extern crate owning_ref;
+    /// use owning_ref::ARef;
+    ///
+    /// fn main() {
+    ///     let aref = ARef::new(Box::new([1, 2, 3, 4]));
+    ///
+    ///     // create a owning reference that points at the
+    ///     // third element of the array.
+    ///     let aref = aref.map(|array| &array[2]);
+    ///     assert_eq!(*aref, 3);
+    /// }
+    /// ```
+    pub fn map<F, T: ?Sized>(self, f: F) -> ARef<T>
+        where F: FnOnce(&U) -> &T
+    {
+        let newref: *const _ = f(&self);
+        let owner = self.owner;
+        let dropfn = self.dropfn;
+        std::mem::forget(self);
+
+        ARef {
+            inner: OwningRef { reference: newref, owner: () },
+            owner: owner,
+            dropfn: dropfn,
+        }
+    }
+}
+
+impl<O, U: ?Sized> From<OwningRef<O, U>> for ARef<U>
+{
+    fn from(oref: OwningRef<O, U>) -> Self {
+        assert!(std::mem::size_of::<O>() <= std::mem::size_of::<ARefStorage>());
+        let OwningRef { owner, reference } = oref;
+        unsafe {
+            let mut storage: ARefStorage = std::mem::uninitialized();
+            std::ptr::copy(&owner, &mut storage as *mut _ as *mut O, 1);
+            std::mem::forget(owner);
+            ARef {
+                inner: OwningRef { owner: (), reference: reference },
+                dropfn: aref_drop_wrapper::<O>,
+                owner: storage,
+            }
+        }
+    }
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::{OwningRef, BoxRef, Erased, ErasedBoxRef};
@@ -631,5 +754,62 @@ mod tests {
             assert_eq!(*a, 1);
             drop(a);
         }
+    }
+
+    #[test]
+    fn aref_locks() {
+        use super::{ARef, RefMutRef};
+        use std::cell::RefCell;
+        {
+            let b = RefCell::new(1);
+            let a = {
+                let a = RefMutRef::new(b.borrow_mut());
+                let a: ARef<_> = a.into();
+                assert_eq!(*a, 1);
+                a
+            };
+            assert_eq!(*a, 1);
+            drop(a);
+            assert_eq!(*b.borrow_mut(), 1);
+        }
+    }
+
+    #[test]
+    fn aref_map() {
+        use super::{ARef, StringRef};
+
+        let a: StringRef = String::from("Hello world").into();
+        let a: ARef<str> = a.into();
+        assert_eq!(&*a, "Hello world");
+        let a = a.map(|s| {
+            assert_eq!(s, "Hello world");
+            &s[6..]
+        });
+        assert_eq!(&*a, "world");
+    }
+
+    #[test]
+    fn aref_sizes() {
+        use super::ARef;
+        use std::sync::{Arc, Mutex, RwLock};
+        use std::rc::Rc;
+        use std::cell::RefCell;
+
+        let a = Mutex::new(1);
+        let _ = ARef::new(a.lock().unwrap());
+
+        let a = RwLock::new(1);
+        let _ = ARef::new(a.read().unwrap());
+        let _ = ARef::new(a.write().unwrap());
+
+        let a = RefCell::new(1);
+        let _ = ARef::new(a.borrow());
+        let _ = ARef::new(a.borrow_mut());
+
+        let _ = ARef::new(Box::new(1));
+        let _ = ARef::new(Rc::new(1));
+        let _ = ARef::new(Arc::new(1));
+
+        let _ = ARef::new(vec![1, 2, 3, 4]);
     }
 }
