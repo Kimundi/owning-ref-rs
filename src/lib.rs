@@ -1,212 +1,210 @@
 #![warn(missing_docs)]
 
-/*!
-# An owning reference.
-
-This crate provides the _owning reference_ types `OwningRef` and `OwningRefMut`
-that enables it to bundle a reference together with the owner of the data it points to.
-This allows moving and dropping of a `OwningRef` without needing to recreate the reference.
-
-It works by requiring owner types to dereference to stable memory locations
-and preventing mutable access to root containers, which in practice requires heap allocation
-as provided by `Box<T>`, `Rc<T>`, etc.
-
-Also provided are typedefs for common owner type combinations,
-which allows for less verbose type signatures.
-For example, `BoxRef<T>` instead of `OwningRef<Box<T>, T>`.
-
-# Examples
-
-## Basics
-
-```
-extern crate owning_ref;
-use owning_ref::BoxRef;
-
-fn main() {
-    // Create an array owned by a Box.
-    let arr = Box::new([1, 2, 3, 4]) as Box<[i32]>;
-
-    // Transfer into a BoxRef.
-    let arr: BoxRef<[i32]> = BoxRef::new(arr);
-    assert_eq!(&*arr, &[1, 2, 3, 4]);
-
-    // We can slice the array without losing ownership or changing type.
-    let arr: BoxRef<[i32]> = arr.map(|arr| &arr[1..3]);
-    assert_eq!(&*arr, &[2, 3]);
-
-    // Also works for Arc, Rc, String and Vec!
-}
-```
-
-## Caching a reference to a struct field
-
-```
-extern crate owning_ref;
-use owning_ref::BoxRef;
-
-fn main() {
-    struct Foo {
-        tag: u32,
-        x: u16,
-        y: u16,
-        z: u16,
-    }
-    let foo = Foo { tag: 1, x: 100, y: 200, z: 300 };
-
-    let or = BoxRef::new(Box::new(foo)).map(|foo| {
-        match foo.tag {
-            0 => &foo.x,
-            1 => &foo.y,
-            2 => &foo.z,
-            _ => panic!(),
-        }
-    });
-
-    assert_eq!(*or, 200);
-}
-```
-
-## Caching a reference to an entry in a vector
-
-```
-extern crate owning_ref;
-use owning_ref::VecRef;
-
-fn main() {
-    let v = VecRef::new(vec![1, 2, 3, 4, 5]).map(|v| &v[3]);
-    assert_eq!(*v, 4);
-}
-```
-
-## Caching a subslice of a String
-
-```
-extern crate owning_ref;
-use owning_ref::StringRef;
-
-fn main() {
-    let s = StringRef::new("hello world".to_owned())
-        .map(|s| s.split(' ').nth(1).unwrap());
-
-    assert_eq!(&*s, "world");
-}
-```
-
-## Reference counted slices that share ownership of the backing storage
-
-```
-extern crate owning_ref;
-use owning_ref::RcRef;
-use std::rc::Rc;
-
-fn main() {
-    let rc: RcRef<[i32]> = RcRef::new(Rc::new([1, 2, 3, 4]) as Rc<[i32]>);
-    assert_eq!(&*rc, &[1, 2, 3, 4]);
-
-    let rc_a: RcRef<[i32]> = rc.clone().map(|s| &s[0..2]);
-    let rc_b = rc.clone().map(|s| &s[1..3]);
-    let rc_c = rc.clone().map(|s| &s[2..4]);
-    assert_eq!(&*rc_a, &[1, 2]);
-    assert_eq!(&*rc_b, &[2, 3]);
-    assert_eq!(&*rc_c, &[3, 4]);
-
-    let rc_c_a = rc_c.clone().map(|s| &s[1]);
-    assert_eq!(&*rc_c_a, &4);
-}
-```
-
-## Atomic reference counted slices that share ownership of the backing storage
-
-```
-extern crate owning_ref;
-use owning_ref::ArcRef;
-use std::sync::Arc;
-
-fn main() {
-    use std::thread;
-
-    fn par_sum(rc: ArcRef<[i32]>) -> i32 {
-        if rc.len() == 0 {
-            return 0;
-        } else if rc.len() == 1 {
-            return rc[0];
-        }
-        let mid = rc.len() / 2;
-        let left = rc.clone().map(|s| &s[..mid]);
-        let right = rc.map(|s| &s[mid..]);
-
-        let left = thread::spawn(move || par_sum(left));
-        let right = thread::spawn(move || par_sum(right));
-
-        left.join().unwrap() + right.join().unwrap()
-    }
-
-    let rc: Arc<[i32]> = Arc::new([1, 2, 3, 4]);
-    let rc: ArcRef<[i32]> = rc.into();
-
-    assert_eq!(par_sum(rc), 10);
-}
-```
-
-## References into RAII locks
-
-```
-extern crate owning_ref;
-use owning_ref::RefRef;
-use std::cell::{RefCell, Ref};
-
-fn main() {
-    let refcell = RefCell::new((1, 2, 3, 4));
-    // Also works with Mutex and RwLock
-
-    let refref = {
-        let refref = RefRef::new(refcell.borrow()).map(|x| &x.3);
-        assert_eq!(*refref, 4);
-
-        // We move the RAII lock and the reference to one of
-        // the subfields in the data it guards here:
-        refref
-    };
-
-    assert_eq!(*refref, 4);
-
-    drop(refref);
-
-    assert_eq!(*refcell.borrow(), (1, 2, 3, 4));
-}
-```
-
-## Mutable reference
-
-When the owned container implements `DerefMut`, it is also possible to make
-a _mutable owning reference_. (E.g. with `Box`, `RefMut`, `MutexGuard`)
-
-```
-extern crate owning_ref;
-use owning_ref::RefMutRefMut;
-use std::cell::{RefCell, RefMut};
-
-fn main() {
-    let refcell = RefCell::new((1, 2, 3, 4));
-
-    let mut refmut_refmut = {
-        let mut refmut_refmut = RefMutRefMut::new(refcell.borrow_mut()).map(|x| &mut x.3);
-        assert_eq!(*refmut_refmut, 4);
-        *refmut_refmut *= 2;
-
-        refmut_refmut
-    };
-
-    assert_eq!(*refmut_refmut, 8);
-    *refmut_refmut *= 2;
-
-    drop(refmut_refmut);
-
-    assert_eq!(*refcell.borrow(), (1, 2, 3, 16));
-}
-```
-*/
+//! # An owning reference.
+//!
+//! This crate provides the _owning reference_ types `OwningRef` and `OwningRefMut`
+//! that enables it to bundle a reference together with the owner of the data it points to.
+//! This allows moving and dropping of a `OwningRef` without needing to recreate the reference.
+//!
+//! It works by requiring owner types to dereference to stable memory locations
+//! and preventing mutable access to root containers, which in practice requires heap allocation
+//! as provided by `Box<T>`, `Rc<T>`, etc.
+//!
+//! Also provided are typedefs for common owner type combinations,
+//! which allows for less verbose type signatures.
+//! For example, `BoxRef<T>` instead of `OwningRef<Box<T>, T>`.
+//!
+//! # Examples
+//!
+//! ## Basics
+//!
+//! ```
+//! extern crate owning_ref;
+//! use owning_ref::BoxRef;
+//!
+//! fn main() {
+//!     // Create an array owned by a Box.
+//!     let arr = Box::new([1, 2, 3, 4]) as Box<[i32]>;
+//!
+//!     // Transfer into a BoxRef.
+//!     let arr: BoxRef<[i32]> = BoxRef::new(arr);
+//!     assert_eq!(&*arr, &[1, 2, 3, 4]);
+//!
+//!     // We can slice the array without losing ownership or changing type.
+//!     let arr: BoxRef<[i32]> = arr.map(|arr| &arr[1..3]);
+//!     assert_eq!(&*arr, &[2, 3]);
+//!
+//!     // Also works for Arc, Rc, String and Vec!
+//! }
+//! ```
+//!
+//! ## Caching a reference to a struct field
+//!
+//! ```
+//! extern crate owning_ref;
+//! use owning_ref::BoxRef;
+//!
+//! fn main() {
+//!     struct Foo {
+//!         tag: u32,
+//!         x: u16,
+//!         y: u16,
+//!         z: u16,
+//!     }
+//!     let foo = Foo { tag: 1, x: 100, y: 200, z: 300 };
+//!
+//!     let or = BoxRef::new(Box::new(foo)).map(|foo| {
+//!         match foo.tag {
+//!             0 => &foo.x,
+//!             1 => &foo.y,
+//!             2 => &foo.z,
+//!             _ => panic!(),
+//!         }
+//!     });
+//!
+//!     assert_eq!(*or, 200);
+//! }
+//! ```
+//!
+//! ## Caching a reference to an entry in a vector
+//!
+//! ```
+//! extern crate owning_ref;
+//! use owning_ref::VecRef;
+//!
+//! fn main() {
+//!     let v = VecRef::new(vec![1, 2, 3, 4, 5]).map(|v| &v[3]);
+//!     assert_eq!(*v, 4);
+//! }
+//! ```
+//!
+//! ## Caching a subslice of a String
+//!
+//! ```
+//! extern crate owning_ref;
+//! use owning_ref::StringRef;
+//!
+//! fn main() {
+//!     let s = StringRef::new("hello world".to_owned())
+//!         .map(|s| s.split(' ').nth(1).unwrap());
+//!
+//!     assert_eq!(&*s, "world");
+//! }
+//! ```
+//!
+//! ## Reference counted slices that share ownership of the backing storage
+//!
+//! ```
+//! extern crate owning_ref;
+//! use owning_ref::RcRef;
+//! use std::rc::Rc;
+//!
+//! fn main() {
+//!     let rc: RcRef<[i32]> = RcRef::new(Rc::new([1, 2, 3, 4]) as Rc<[i32]>);
+//!     assert_eq!(&*rc, &[1, 2, 3, 4]);
+//!
+//!     let rc_a: RcRef<[i32]> = rc.clone().map(|s| &s[0..2]);
+//!     let rc_b = rc.clone().map(|s| &s[1..3]);
+//!     let rc_c = rc.clone().map(|s| &s[2..4]);
+//!     assert_eq!(&*rc_a, &[1, 2]);
+//!     assert_eq!(&*rc_b, &[2, 3]);
+//!     assert_eq!(&*rc_c, &[3, 4]);
+//!
+//!     let rc_c_a = rc_c.clone().map(|s| &s[1]);
+//!     assert_eq!(&*rc_c_a, &4);
+//! }
+//! ```
+//!
+//! ## Atomic reference counted slices that share ownership of the backing storage
+//!
+//! ```
+//! extern crate owning_ref;
+//! use owning_ref::ArcRef;
+//! use std::sync::Arc;
+//!
+//! fn main() {
+//!     use std::thread;
+//!
+//!     fn par_sum(rc: ArcRef<[i32]>) -> i32 {
+//!         if rc.len() == 0 {
+//!             return 0;
+//!         } else if rc.len() == 1 {
+//!             return rc[0];
+//!         }
+//!         let mid = rc.len() / 2;
+//!         let left = rc.clone().map(|s| &s[..mid]);
+//!         let right = rc.map(|s| &s[mid..]);
+//!
+//!         let left = thread::spawn(move || par_sum(left));
+//!         let right = thread::spawn(move || par_sum(right));
+//!
+//!         left.join().unwrap() + right.join().unwrap()
+//!     }
+//!
+//!     let rc: Arc<[i32]> = Arc::new([1, 2, 3, 4]);
+//!     let rc: ArcRef<[i32]> = rc.into();
+//!
+//!     assert_eq!(par_sum(rc), 10);
+//! }
+//! ```
+//!
+//! ## References into RAII locks
+//!
+//! ```
+//! extern crate owning_ref;
+//! use owning_ref::RefRef;
+//! use std::cell::{RefCell, Ref};
+//!
+//! fn main() {
+//!     let refcell = RefCell::new((1, 2, 3, 4));
+//!     // Also works with Mutex and RwLock
+//!
+//!     let refref = {
+//!         let refref = RefRef::new(refcell.borrow()).map(|x| &x.3);
+//!         assert_eq!(*refref, 4);
+//!
+//!         // We move the RAII lock and the reference to one of
+//!         // the subfields in the data it guards here:
+//!         refref
+//!     };
+//!
+//!     assert_eq!(*refref, 4);
+//!
+//!     drop(refref);
+//!
+//!     assert_eq!(*refcell.borrow(), (1, 2, 3, 4));
+//! }
+//! ```
+//!
+//! ## Mutable reference
+//!
+//! When the owned container implements `DerefMut`, it is also possible to make
+//! a _mutable owning reference_. (E.g. with `Box`, `RefMut`, `MutexGuard`)
+//!
+//! ```
+//! extern crate owning_ref;
+//! use owning_ref::RefMutRefMut;
+//! use std::cell::{RefCell, RefMut};
+//!
+//! fn main() {
+//!     let refcell = RefCell::new((1, 2, 3, 4));
+//!
+//!     let mut refmut_refmut = {
+//!         let mut refmut_refmut = RefMutRefMut::new(refcell.borrow_mut()).map(|x| &mut x.3);
+//!         assert_eq!(*refmut_refmut, 4);
+//!         *refmut_refmut *= 2;
+//!
+//!         refmut_refmut
+//!     };
+//!
+//!     assert_eq!(*refmut_refmut, 8);
+//!     *refmut_refmut *= 2;
+//!
+//!     drop(refmut_refmut);
+//!
+//!     assert_eq!(*refcell.borrow(), (1, 2, 3, 16));
+//! }
+//! ```
 
 /// Marker trait for expressing that the memory address of the value
 /// reachable via a dereference remains identical even if `self` gets moved.
@@ -260,9 +258,9 @@ pub unsafe trait IntoErased<'a> {
     fn into_erased(self) -> Self::Erased;
 }
 
-/////////////////////////////////////////////////////////////////////////////
+// ############################################################################
 // inherent API
-/////////////////////////////////////////////////////////////////////////////
+// ############################################################################
 
 impl<O, T: ?Sized> OwningRef<O, T> {
     /// Creates a new owning reference from a owner
@@ -280,7 +278,7 @@ impl<O, T: ?Sized> OwningRef<O, T> {
     /// ```
     pub fn new(o: O) -> Self
         where O: StableAddress,
-              O: Deref<Target = T>,
+              O: Deref<Target = T>
     {
         OwningRef {
             reference: &*o,
@@ -351,7 +349,7 @@ impl<O, T: ?Sized> OwningRef<O, T> {
     /// }
     /// ```
     pub fn erase_owner<'a>(self) -> OwningRef<O::Erased, T>
-        where O: IntoErased<'a>,
+        where O: IntoErased<'a>
     {
         OwningRef {
             reference: self.reference,
@@ -390,7 +388,7 @@ impl<O, T: ?Sized> OwningRefMut<O, T> {
     /// ```
     pub fn new(mut o: O) -> Self
         where O: StableAddress,
-              O: DerefMut<Target = T>,
+              O: DerefMut<Target = T>
     {
         OwningRefMut {
             reference: &mut *o,
@@ -461,7 +459,7 @@ impl<O, T: ?Sized> OwningRefMut<O, T> {
     /// }
     /// ```
     pub fn erase_owner<'a>(self) -> OwningRefMut<O::Erased, T>
-        where O: IntoErased<'a>,
+        where O: IntoErased<'a>
     {
         OwningRefMut {
             reference: self.reference,
@@ -484,9 +482,9 @@ impl<O, T: ?Sized> OwningRefMut<O, T> {
     }
 }
 
-/////////////////////////////////////////////////////////////////////////////
+// ############################################################################
 // std traits
-/////////////////////////////////////////////////////////////////////////////
+// ############################################################################
 
 use std::ops::{Deref, DerefMut};
 use std::convert::From;
@@ -497,9 +495,7 @@ impl<O, T: ?Sized> Deref for OwningRef<O, T> {
     type Target = T;
 
     fn deref(&self) -> &T {
-        unsafe {
-            &*self.reference
-        }
+        unsafe { &*self.reference }
     }
 }
 
@@ -507,17 +503,13 @@ impl<O, T: ?Sized> Deref for OwningRefMut<O, T> {
     type Target = T;
 
     fn deref(&self) -> &T {
-        unsafe {
-            &*self.reference
-        }
+        unsafe { &*self.reference }
     }
 }
 
 impl<O, T: ?Sized> DerefMut for OwningRefMut<O, T> {
     fn deref_mut(&mut self) -> &mut T {
-        unsafe {
-            &mut *self.reference
-        }
+        unsafe { &mut *self.reference }
     }
 }
 
@@ -540,7 +532,8 @@ impl<O, T: ?Sized> AsMut<T> for OwningRefMut<O, T> {
 }
 
 impl<O, T: ?Sized> From<O> for OwningRef<O, T>
-    where O: StableAddress, O: Deref<Target = T>,
+    where O: StableAddress,
+          O: Deref<Target = T>
 {
     fn from(owner: O) -> Self {
         OwningRef::new(owner)
@@ -548,7 +541,8 @@ impl<O, T: ?Sized> From<O> for OwningRef<O, T>
 }
 
 impl<O, T: ?Sized> From<O> for OwningRefMut<O, T>
-    where O: StableAddress, O: DerefMut<Target = T>,
+    where O: StableAddress,
+          O: DerefMut<Target = T>
 {
     fn from(owner: O) -> Self {
         OwningRefMut::new(owner)
@@ -556,7 +550,8 @@ impl<O, T: ?Sized> From<O> for OwningRefMut<O, T>
 }
 
 impl<O, T: ?Sized> From<OwningRefMut<O, T>> for OwningRef<O, T>
-    where O: StableAddress, O: DerefMut<Target = T>,
+    where O: StableAddress,
+          O: DerefMut<Target = T>
 {
     fn from(other: OwningRefMut<O, T>) -> Self {
         OwningRef {
@@ -569,25 +564,31 @@ impl<O, T: ?Sized> From<OwningRefMut<O, T>> for OwningRef<O, T>
 // ^ FIXME: Is a Into impl for calling into_inner() possible as well?
 
 impl<O, T: ?Sized> Debug for OwningRef<O, T>
-    where O: Debug, T: Debug,
+    where O: Debug,
+          T: Debug
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(f, "OwningRef {{ owner: {:?}, reference: {:?} }}",
-               self.owner(), &**self)
+        write!(f,
+               "OwningRef {{ owner: {:?}, reference: {:?} }}",
+               self.owner(),
+               &**self)
     }
 }
 
 impl<O, T: ?Sized> Debug for OwningRefMut<O, T>
-    where O: Debug, T: Debug,
+    where O: Debug,
+          T: Debug
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(f, "OwningRefMut {{ owner: {:?}, reference: {:?} }}",
-               self.owner(), &**self)
+        write!(f,
+               "OwningRefMut {{ owner: {:?}, reference: {:?} }}",
+               self.owner(),
+               &**self)
     }
 }
 
 impl<O, T: ?Sized> Clone for OwningRef<O, T>
-    where O: CloneStableAddress,
+    where O: CloneStableAddress
 {
     fn clone(&self) -> Self {
         OwningRef {
@@ -608,9 +609,9 @@ impl Debug for Erased {
     }
 }
 
-/////////////////////////////////////////////////////////////////////////////
+// ############################################################################
 // std types integration and convenience type defs
-/////////////////////////////////////////////////////////////////////////////
+// ############################################################################
 
 use std::boxed::Box;
 use std::rc::Rc;
@@ -652,11 +653,9 @@ pub type RefMutRef<'a, T, U = T> = OwningRef<RefMut<'a, T>, U>;
 /// Typedef of a owning reference that uses a `MutexGuard` as the owner.
 pub type MutexGuardRef<'a, T, U = T> = OwningRef<MutexGuard<'a, T>, U>;
 /// Typedef of a owning reference that uses a `RwLockReadGuard` as the owner.
-pub type RwLockReadGuardRef<'a, T, U = T>
-    = OwningRef<RwLockReadGuard<'a, T>, U>;
+pub type RwLockReadGuardRef<'a, T, U = T> = OwningRef<RwLockReadGuard<'a, T>, U>;
 /// Typedef of a owning reference that uses a `RwLockWriteGuard` as the owner.
-pub type RwLockWriteGuardRef<'a, T, U = T>
-    = OwningRef<RwLockWriteGuard<'a, T>, U>;
+pub type RwLockWriteGuardRef<'a, T, U = T> = OwningRef<RwLockWriteGuard<'a, T>, U>;
 
 /// Typedef of a mutable owning reference that uses a `Box` as the owner.
 pub type BoxRefMut<T, U = T> = OwningRefMut<Box<T>, U>;
@@ -670,20 +669,25 @@ pub type RefMutRefMut<'a, T, U = T> = OwningRefMut<RefMut<'a, T>, U>;
 /// Typedef of a mutable owning reference that uses a `MutexGuard` as the owner.
 pub type MutexGuardRefMut<'a, T, U = T> = OwningRefMut<MutexGuard<'a, T>, U>;
 /// Typedef of a mutable owning reference that uses a `RwLockWriteGuard` as the owner.
-pub type RwLockWriteGuardRefMut<'a, T, U = T>
-    = OwningRef<RwLockWriteGuard<'a, T>, U>;
+pub type RwLockWriteGuardRefMut<'a, T, U = T> = OwningRef<RwLockWriteGuard<'a, T>, U>;
 
 unsafe impl<'a, T: 'a> IntoErased<'a> for Box<T> {
     type Erased = Box<Erased + 'a>;
-    fn into_erased(self) -> Self::Erased { self }
+    fn into_erased(self) -> Self::Erased {
+        self
+    }
 }
 unsafe impl<'a, T: 'a> IntoErased<'a> for Rc<T> {
     type Erased = Rc<Erased + 'a>;
-    fn into_erased(self) -> Self::Erased { self }
+    fn into_erased(self) -> Self::Erased {
+        self
+    }
 }
 unsafe impl<'a, T: 'a> IntoErased<'a> for Arc<T> {
     type Erased = Arc<Erased + 'a>;
-    fn into_erased(self) -> Self::Erased { self }
+    fn into_erased(self) -> Self::Erased {
+        self
+    }
 }
 
 /// Typedef of a owning reference that uses an erased `Box` as the owner.
@@ -781,16 +785,15 @@ mod tests {
         let or: BoxRef<String> = Box::new(example().1).into();
         let or = or.map(|x| &x[..5]);
         let s = format!("{:?}", or);
-        assert_eq!(&s, "OwningRef { owner: \"hello world\", reference: \"hello\" }");
+        assert_eq!(&s,
+                   "OwningRef { owner: \"hello world\", reference: \"hello\" }");
     }
 
     #[test]
     fn erased_owner() {
-        let o1: BoxRef<Example, str> = BoxRef::new(Box::new(example()))
-            .map(|x| &x.1[..]);
+        let o1: BoxRef<Example, str> = BoxRef::new(Box::new(example())).map(|x| &x.1[..]);
 
-        let o2: BoxRef<String, str> = BoxRef::new(Box::new(example().1))
-            .map(|x| &x[..]);
+        let o2: BoxRef<String, str> = BoxRef::new(Box::new(example().1)).map(|x| &x[..]);
 
         let os: Vec<ErasedBoxRef<str>> = vec![o1.erase_owner(), o2.erase_owner()];
         assert!(os.iter().all(|e| &e[..] == "hello world"));
