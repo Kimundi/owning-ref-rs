@@ -316,6 +316,40 @@ impl<O, T: ?Sized> OwningRef<O, T> {
         }
     }
 
+    /// Tries to convert `self` into a new owning reference that points
+    /// at something reachable from the previous one.
+    ///
+    /// This can be a reference to a field of `U`, something reachable from a field of
+    /// `U`, or even something unrelated with a `'static` lifetime.
+    ///
+    /// # Example
+    /// ```
+    /// extern crate owning_ref;
+    /// use owning_ref::OwningRef;
+    ///
+    /// fn main() {
+    ///     let owning_ref = OwningRef::new(Box::new([1, 2, 3, 4]));
+    ///
+    ///     // create a owning reference that points at the
+    ///     // third element of the array.
+    ///     let owning_ref = owning_ref.try_map(|array| {
+    ///         if array[2] == 3 { Ok(&array[2]) } else { Err(()) }
+    ///     });
+    ///     assert_eq!(*owning_ref.unwrap(), 3);
+    /// }
+    /// ```
+    pub fn try_map<F, U: ?Sized, E>(self, f: F) -> Result<OwningRef<O, U>, E>
+        where O: StableAddress,
+              F: FnOnce(&T) -> Result<&U, E>
+    {
+        f(&self).map(|it| it as *const _).map(move |it| {
+            OwningRef {
+                reference: it,
+                owner: self.owner,
+            }
+        })
+    }
+
     /// Erases the concrete base type of the owner with a trait object.
     ///
     /// This allows mixing of owned references with different owner base types.
@@ -424,6 +458,40 @@ impl<O, T: ?Sized> OwningRefMut<O, T> {
             reference: f(&mut self),
             owner: self.owner,
         }
+    }
+
+    /// Tries to convert `self` into a new mutable owning reference that points
+    /// at something reachable from the previous one.
+    ///
+    /// This can be a reference to a field of `U`, something reachable from a field of
+    /// `U`, or even something unrelated with a `'static` lifetime.
+    ///
+    /// # Example
+    /// ```
+    /// extern crate owning_ref;
+    /// use owning_ref::OwningRefMut;
+    ///
+    /// fn main() {
+    ///     let owning_ref_mut = OwningRefMut::new(Box::new([1, 2, 3, 4]));
+    ///
+    ///     // create a owning reference that points at the
+    ///     // third element of the array.
+    ///     let owning_ref_mut = owning_ref_mut.try_map(|array| {
+    ///         if array[2] == 3 { Ok(&mut array[2]) } else { Err(()) }
+    ///     });
+    ///     assert_eq!(*owning_ref_mut.unwrap(), 3);
+    /// }
+    /// ```
+    pub fn try_map<F, U: ?Sized, E>(mut self, f: F) -> Result<OwningRefMut<O, U>, E>
+        where O: StableAddress,
+              F: FnOnce(&mut T) -> Result<&mut U, E>
+    {
+        f(&mut self).map(|it| it as *mut _).map(move |it| {
+            OwningRefMut {
+                reference: it,
+                owner: self.owner,
+            }
+        })
     }
 
     /// Erases the concrete base type of the owner with a trait object.
