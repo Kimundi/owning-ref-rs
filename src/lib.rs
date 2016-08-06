@@ -3,15 +3,17 @@
 /*!
 # An owning reference.
 
-This crate provides the _owning reference_ type `OwningRef` that enables it
-to bundle a reference together with the owner of the data it points to.
+This crate provides the _owning reference_ types `OwningRef` and `OwningRefMut`
+that enables it to bundle a reference together with the owner of the data it points to.
 This allows moving and dropping of a `OwningRef` without needing to recreate the reference.
 
-It works by requiring owner types to dereference to stable memory locations and preventing mutable access, which in practice requires an heap allocation as
-provided by `Box<T>`, `Rc<T>`, etc.
+It works by requiring owner types to dereference to stable memory locations
+and preventing mutable access to root containers, which in practice requires heap allocation
+as provided by `Box<T>`, `Rc<T>`, etc.
 
 Also provided are typedefs for common owner type combinations,
-which allows for less verbose type signatures. For example, `BoxRef<T>` instead of `OwningRef<Box<T>, T>`.
+which allows for less verbose type signatures.
+For example, `BoxRef<T>` instead of `OwningRef<Box<T>, T>`.
 
 # Examples
 
@@ -174,6 +176,36 @@ fn main() {
     assert_eq!(*refcell.borrow(), (1, 2, 3, 4));
 }
 ```
+
+## Mutable reference
+
+When the owned container implements `DerefMut`, it is also possible to make
+a _mutable owning reference_. (E.g. with `Box`, `RefMut`, `MutexGuard`)
+
+```
+extern crate owning_ref;
+use owning_ref::RefMutRefMut;
+use std::cell::{RefCell, RefMut};
+
+fn main() {
+    let refcell = RefCell::new((1, 2, 3, 4));
+
+    let mut refmut_refmut = {
+        let mut refmut_refmut = RefMutRefMut::new(refcell.borrow_mut()).map(|x| &mut x.3);
+        assert_eq!(*refmut_refmut, 4);
+        *refmut_refmut *= 2;
+
+        refmut_refmut
+    };
+
+    assert_eq!(*refmut_refmut, 8);
+    *refmut_refmut *= 2;
+
+    drop(refmut_refmut);
+
+    assert_eq!(*refcell.borrow(), (1, 2, 3, 16));
+}
+```
 */
 
 /// Marker trait for expressing that the memory address of the value
@@ -196,6 +228,20 @@ pub unsafe trait CloneStableAddress: StableAddress + Clone {}
 pub struct OwningRef<O, T: ?Sized> {
     owner: O,
     reference: *const T,
+}
+
+/// A mutable owning reference.
+///
+/// This wraps an owner `O` and a reference `&mut T` pointing
+/// at something reachable from `O::Target` while keeping
+/// the ability to move `self` around.
+///
+/// The owner is usually a pointer that points at some base type.
+///
+/// For more details and examples, see the module and method docs.
+pub struct OwningRefMut<O, T: ?Sized> {
+    owner: O,
+    reference: *mut T,
 }
 
 /// Helper trait for an erased concrete type an owner dereferences to.
@@ -328,11 +374,121 @@ impl<O, T: ?Sized> OwningRef<O, T> {
     }
 }
 
+impl<O, T: ?Sized> OwningRefMut<O, T> {
+    /// Creates a new mutable owning reference from a owner
+    /// initialized to the direct dereference of it.
+    ///
+    /// # Example
+    /// ```
+    /// extern crate owning_ref;
+    /// use owning_ref::OwningRefMut;
+    ///
+    /// fn main() {
+    ///     let owning_ref_mut = OwningRefMut::new(Box::new(42));
+    ///     assert_eq!(*owning_ref_mut, 42);
+    /// }
+    /// ```
+    pub fn new(mut o: O) -> Self
+        where O: StableAddress,
+              O: DerefMut<Target = T>,
+    {
+        OwningRefMut {
+            reference: &mut *o,
+            owner: o,
+        }
+    }
+
+    /// Converts `self` into a new mutable owning reference that points
+    /// at something reachable from the previous one.
+    ///
+    /// This can be a reference to a field of `U`, something reachable from a field of
+    /// `U`, or even something unrelated with a `'static` lifetime.
+    ///
+    /// # Example
+    /// ```
+    /// extern crate owning_ref;
+    /// use owning_ref::OwningRefMut;
+    ///
+    /// fn main() {
+    ///     let owning_ref_mut = OwningRefMut::new(Box::new([1, 2, 3, 4]));
+    ///
+    ///     // create a owning reference that points at the
+    ///     // third element of the array.
+    ///     let owning_ref_mut = owning_ref_mut.map(|array| &mut array[2]);
+    ///     assert_eq!(*owning_ref_mut, 3);
+    /// }
+    /// ```
+    pub fn map<F, U: ?Sized>(mut self, f: F) -> OwningRefMut<O, U>
+        where O: StableAddress,
+              F: FnOnce(&mut T) -> &mut U
+    {
+        OwningRefMut {
+            reference: f(&mut self),
+            owner: self.owner,
+        }
+    }
+
+    /// Erases the concrete base type of the owner with a trait object.
+    ///
+    /// This allows mixing of owned references with different owner base types.
+    ///
+    /// # Example
+    /// ```
+    /// extern crate owning_ref;
+    /// use owning_ref::{OwningRefMut, Erased};
+    ///
+    /// fn main() {
+    ///     // NB: Using the concrete types here for explicitnes.
+    ///     // For less verbose code type aliases like `BoxRef` are provided.
+    ///
+    ///     let owning_ref_mut_a: OwningRefMut<Box<[i32; 4]>, [i32; 4]>
+    ///         = OwningRefMut::new(Box::new([1, 2, 3, 4]));
+    ///
+    ///     let owning_ref_mut_b: OwningRefMut<Box<Vec<(i32, bool)>>, Vec<(i32, bool)>>
+    ///         = OwningRefMut::new(Box::new(vec![(0, false), (1, true)]));
+    ///
+    ///     let owning_ref_mut_a: OwningRefMut<Box<[i32; 4]>, i32>
+    ///         = owning_ref_mut_a.map(|a| &mut a[0]);
+    ///
+    ///     let owning_ref_mut_b: OwningRefMut<Box<Vec<(i32, bool)>>, i32>
+    ///         = owning_ref_mut_b.map(|a| &mut a[1].0);
+    ///
+    ///     let owning_refs_mut: [OwningRefMut<Box<Erased>, i32>; 2]
+    ///         = [owning_ref_mut_a.erase_owner(), owning_ref_mut_b.erase_owner()];
+    ///
+    ///     assert_eq!(*owning_refs_mut[0], 1);
+    ///     assert_eq!(*owning_refs_mut[1], 1);
+    /// }
+    /// ```
+    pub fn erase_owner<'a>(self) -> OwningRefMut<O::Erased, T>
+        where O: IntoErased<'a>,
+    {
+        OwningRefMut {
+            reference: self.reference,
+            owner: self.owner.into_erased(),
+        }
+    }
+
+    // TODO: wrap_owner
+
+    // FIXME: Naming convention?
+    /// A getter for the underlying owner.
+    pub fn owner(&self) -> &O {
+        &self.owner
+    }
+
+    // FIXME: Naming convention?
+    /// Discards the reference and retrieves the owner.
+    pub fn into_inner(self) -> O {
+        self.owner
+    }
+}
+
 /////////////////////////////////////////////////////////////////////////////
 // std traits
 /////////////////////////////////////////////////////////////////////////////
 
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 use std::convert::From;
 use std::fmt::{self, Debug};
 use std::marker::{Send, Sync};
@@ -347,9 +503,39 @@ impl<O, T: ?Sized> Deref for OwningRef<O, T> {
     }
 }
 
+impl<O, T: ?Sized> Deref for OwningRefMut<O, T> {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        unsafe {
+            &*self.reference
+        }
+    }
+}
+
+impl<O, T: ?Sized> DerefMut for OwningRefMut<O, T> {
+    fn deref_mut(&mut self) -> &mut T {
+        unsafe {
+            &mut *self.reference
+        }
+    }
+}
+
 impl<O, T: ?Sized> AsRef<T> for OwningRef<O, T> {
     fn as_ref(&self) -> &T {
         &*self
+    }
+}
+
+impl<O, T: ?Sized> AsRef<T> for OwningRefMut<O, T> {
+    fn as_ref(&self) -> &T {
+        &*self
+    }
+}
+
+impl<O, T: ?Sized> AsMut<T> for OwningRefMut<O, T> {
+    fn as_mut(&mut self) -> &mut T {
+        &mut *self
     }
 }
 
@@ -361,6 +547,25 @@ impl<O, T: ?Sized> From<O> for OwningRef<O, T>
     }
 }
 
+impl<O, T: ?Sized> From<O> for OwningRefMut<O, T>
+    where O: StableAddress, O: DerefMut<Target = T>,
+{
+    fn from(owner: O) -> Self {
+        OwningRefMut::new(owner)
+    }
+}
+
+impl<O, T: ?Sized> From<OwningRefMut<O, T>> for OwningRef<O, T>
+    where O: StableAddress, O: DerefMut<Target = T>,
+{
+    fn from(other: OwningRefMut<O, T>) -> Self {
+        OwningRef {
+            owner: other.owner,
+            reference: other.reference,
+        }
+    }
+}
+
 // ^ FIXME: Is a Into impl for calling into_inner() possible as well?
 
 impl<O, T: ?Sized> Debug for OwningRef<O, T>
@@ -368,6 +573,15 @@ impl<O, T: ?Sized> Debug for OwningRef<O, T>
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         write!(f, "OwningRef {{ owner: {:?}, reference: {:?} }}",
+               self.owner(), &**self)
+    }
+}
+
+impl<O, T: ?Sized> Debug for OwningRefMut<O, T>
+    where O: Debug, T: Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "OwningRefMut {{ owner: {:?}, reference: {:?} }}",
                self.owner(), &**self)
     }
 }
@@ -385,6 +599,8 @@ impl<O, T: ?Sized> Clone for OwningRef<O, T>
 
 unsafe impl<O: Send, T: ?Sized> Send for OwningRef<O, T> {}
 unsafe impl<O: Sync, T: ?Sized> Sync for OwningRef<O, T> {}
+unsafe impl<O: Send, T: ?Sized> Send for OwningRefMut<O, T> {}
+unsafe impl<O: Sync, T: ?Sized> Sync for OwningRefMut<O, T> {}
 
 impl Debug for Erased {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
@@ -442,6 +658,21 @@ pub type RwLockReadGuardRef<'a, T, U = T>
 pub type RwLockWriteGuardRef<'a, T, U = T>
     = OwningRef<RwLockWriteGuard<'a, T>, U>;
 
+/// Typedef of a mutable owning reference that uses a `Box` as the owner.
+pub type BoxRefMut<T, U = T> = OwningRefMut<Box<T>, U>;
+/// Typedef of a mutable owning reference that uses a `Vec` as the owner.
+pub type VecRefMut<T, U = T> = OwningRefMut<Vec<T>, U>;
+/// Typedef of a mutable owning reference that uses a `String` as the owner.
+pub type StringRefMut = OwningRefMut<String, str>;
+
+/// Typedef of a mutable owning reference that uses a `RefMut` as the owner.
+pub type RefMutRefMut<'a, T, U = T> = OwningRefMut<RefMut<'a, T>, U>;
+/// Typedef of a mutable owning reference that uses a `MutexGuard` as the owner.
+pub type MutexGuardRefMut<'a, T, U = T> = OwningRefMut<MutexGuard<'a, T>, U>;
+/// Typedef of a mutable owning reference that uses a `RwLockWriteGuard` as the owner.
+pub type RwLockWriteGuardRefMut<'a, T, U = T>
+    = OwningRef<RwLockWriteGuard<'a, T>, U>;
+
 unsafe impl<'a, T: 'a> IntoErased<'a> for Box<T> {
     type Erased = Box<Erased + 'a>;
     fn into_erased(self) -> Self::Erased { self }
@@ -461,6 +692,9 @@ pub type ErasedBoxRef<U> = OwningRef<Box<Erased>, U>;
 pub type ErasedRcRef<U> = OwningRef<Rc<Erased>, U>;
 /// Typedef of a owning reference that uses an erased `Arc` as the owner.
 pub type ErasedArcRef<U> = OwningRef<Arc<Erased>, U>;
+
+/// Typedef of a mutable owning reference that uses an erased `Box` as the owner.
+pub type ErasedBoxRefMut<U> = OwningRefMut<Box<Erased>, U>;
 
 #[cfg(test)]
 mod tests {
