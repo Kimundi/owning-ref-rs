@@ -833,6 +833,17 @@ mod tests {
         }
 
         #[test]
+        fn try_map() {
+            let or: BoxRef<String> = Box::new(example().1).into();
+            let or: Result<BoxRef<_, str>, ()> = or.try_map(|x| Ok(&x[1..5]));
+            assert_eq!(&*or.unwrap(), "ello");
+
+            let or: BoxRef<String> = Box::new(example().1).into();
+            let or: Result<BoxRef<_, str>, ()> = or.try_map(|_| Err(()));
+            assert!(or.is_err());
+        }
+
+        #[test]
         fn owner() {
             let or: BoxRef<String> = Box::new(example().1).into();
             let or = or.map(|x| &x[..5]);
@@ -1007,6 +1018,17 @@ mod tests {
                 .map(|x| &mut x[..5])
                 .map(|x| &mut x[1..3]);
             assert_eq!(&*or, "el");
+        }
+
+        #[test]
+        fn try_map() {
+            let or: BoxRefMut<String> = Box::new(example().1).into();
+            let or: Result<BoxRefMut<_, str>, ()> = or.try_map(|x| Ok(&mut x[1..5]));
+            assert_eq!(&*or.unwrap(), "ello");
+
+            let or: BoxRefMut<String> = Box::new(example().1).into();
+            let or: Result<BoxRefMut<_, str>, ()> = or.try_map(|_| Err(()));
+            assert!(or.is_err());
         }
 
         #[test]
