@@ -190,7 +190,7 @@
 //!     let refcell = RefCell::new((1, 2, 3, 4));
 //!
 //!     let mut refmut_refmut = {
-//!         let mut refmut_refmut = RefMutRefMut::new(refcell.borrow_mut()).map(|x| &mut x.3);
+//!         let mut refmut_refmut = RefMutRefMut::new(refcell.borrow_mut()).map_mut(|x| &mut x.3);
 //!         assert_eq!(*refmut_refmut, 4);
 //!         *refmut_refmut *= 2;
 //!
@@ -430,7 +430,7 @@ impl<O, T: ?Sized> OwningRefMut<O, T> {
         }
     }
 
-    /// Converts `self` into a new mutable owning reference that points
+    /// Converts `self` into a new _immutable_ owning reference that points
     /// at something reachable from the previous one.
     ///
     /// This can be a reference to a field of `U`, something reachable from a field of
@@ -446,11 +446,41 @@ impl<O, T: ?Sized> OwningRefMut<O, T> {
     ///
     ///     // create a owning reference that points at the
     ///     // third element of the array.
-    ///     let owning_ref_mut = owning_ref_mut.map(|array| &mut array[2]);
+    ///     let owning_ref = owning_ref_mut.map(|array| &array[2]);
+    ///     assert_eq!(*owning_ref, 3);
+    /// }
+    /// ```
+    pub fn map<F, U: ?Sized>(mut self, f: F) -> OwningRef<O, U>
+        where O: StableAddress,
+              F: FnOnce(&mut T) -> &U
+    {
+        OwningRef {
+            reference: f(&mut self),
+            owner: self.owner,
+        }
+    }
+
+    /// Converts `self` into a new _mutable_ owning reference that points
+    /// at something reachable from the previous one.
+    ///
+    /// This can be a reference to a field of `U`, something reachable from a field of
+    /// `U`, or even something unrelated with a `'static` lifetime.
+    ///
+    /// # Example
+    /// ```
+    /// extern crate owning_ref;
+    /// use owning_ref::OwningRefMut;
+    ///
+    /// fn main() {
+    ///     let owning_ref_mut = OwningRefMut::new(Box::new([1, 2, 3, 4]));
+    ///
+    ///     // create a owning reference that points at the
+    ///     // third element of the array.
+    ///     let owning_ref_mut = owning_ref_mut.map_mut(|array| &mut array[2]);
     ///     assert_eq!(*owning_ref_mut, 3);
     /// }
     /// ```
-    pub fn map<F, U: ?Sized>(mut self, f: F) -> OwningRefMut<O, U>
+    pub fn map_mut<F, U: ?Sized>(mut self, f: F) -> OwningRefMut<O, U>
         where O: StableAddress,
               F: FnOnce(&mut T) -> &mut U
     {
@@ -460,7 +490,7 @@ impl<O, T: ?Sized> OwningRefMut<O, T> {
         }
     }
 
-    /// Tries to convert `self` into a new mutable owning reference that points
+    /// Tries to convert `self` into a new _immutable_ owning reference that points
     /// at something reachable from the previous one.
     ///
     /// This can be a reference to a field of `U`, something reachable from a field of
@@ -476,13 +506,47 @@ impl<O, T: ?Sized> OwningRefMut<O, T> {
     ///
     ///     // create a owning reference that points at the
     ///     // third element of the array.
-    ///     let owning_ref_mut = owning_ref_mut.try_map(|array| {
+    ///     let owning_ref = owning_ref_mut.try_map(|array| {
+    ///         if array[2] == 3 { Ok(&array[2]) } else { Err(()) }
+    ///     });
+    ///     assert_eq!(*owning_ref.unwrap(), 3);
+    /// }
+    /// ```
+    pub fn try_map<F, U: ?Sized, E>(mut self, f: F) -> Result<OwningRef<O, U>, E>
+        where O: StableAddress,
+              F: FnOnce(&mut T) -> Result<&U, E>
+    {
+        f(&mut self).map(|it| it as *const _).map(move |it| {
+            OwningRef {
+                reference: it,
+                owner: self.owner,
+            }
+        })
+    }
+
+    /// Tries to convert `self` into a new _mutable_ owning reference that points
+    /// at something reachable from the previous one.
+    ///
+    /// This can be a reference to a field of `U`, something reachable from a field of
+    /// `U`, or even something unrelated with a `'static` lifetime.
+    ///
+    /// # Example
+    /// ```
+    /// extern crate owning_ref;
+    /// use owning_ref::OwningRefMut;
+    ///
+    /// fn main() {
+    ///     let owning_ref_mut = OwningRefMut::new(Box::new([1, 2, 3, 4]));
+    ///
+    ///     // create a owning reference that points at the
+    ///     // third element of the array.
+    ///     let owning_ref_mut = owning_ref_mut.try_map_mut(|array| {
     ///         if array[2] == 3 { Ok(&mut array[2]) } else { Err(()) }
     ///     });
     ///     assert_eq!(*owning_ref_mut.unwrap(), 3);
     /// }
     /// ```
-    pub fn try_map<F, U: ?Sized, E>(mut self, f: F) -> Result<OwningRefMut<O, U>, E>
+    pub fn try_map_mut<F, U: ?Sized, E>(mut self, f: F) -> Result<OwningRefMut<O, U>, E>
         where O: StableAddress,
               F: FnOnce(&mut T) -> Result<&mut U, E>
     {
@@ -514,10 +578,10 @@ impl<O, T: ?Sized> OwningRefMut<O, T> {
     ///         = OwningRefMut::new(Box::new(vec![(0, false), (1, true)]));
     ///
     ///     let owning_ref_mut_a: OwningRefMut<Box<[i32; 4]>, i32>
-    ///         = owning_ref_mut_a.map(|a| &mut a[0]);
+    ///         = owning_ref_mut_a.map_mut(|a| &mut a[0]);
     ///
     ///     let owning_ref_mut_b: OwningRefMut<Box<Vec<(i32, bool)>>, i32>
-    ///         = owning_ref_mut_b.map(|a| &mut a[1].0);
+    ///         = owning_ref_mut_b.map_mut(|a| &mut a[1].0);
     ///
     ///     let owning_refs_mut: [OwningRefMut<Box<Erased>, i32>; 2]
     ///         = [owning_ref_mut_a.erase_owner(), owning_ref_mut_b.erase_owner()];
@@ -989,52 +1053,52 @@ mod tests {
         #[test]
         fn map_offset_ref() {
             let or: BoxRefMut<Example> = Box::new(example()).into();
-            let or: BoxRefMut<_, u32> = or.map(|x| &mut x.0);
+            let or: BoxRefMut<_, u32> = or.map_mut(|x| &mut x.0);
             assert_eq!(&*or, &42);
 
             let or: BoxRefMut<Example> = Box::new(example()).into();
-            let or: BoxRefMut<_, u8> = or.map(|x| &mut x.2[1]);
+            let or: BoxRefMut<_, u8> = or.map_mut(|x| &mut x.2[1]);
             assert_eq!(&*or, &2);
         }
 
         #[test]
         fn map_heap_ref() {
             let or: BoxRefMut<Example> = Box::new(example()).into();
-            let or: BoxRefMut<_, str> = or.map(|x| &mut x.1[..5]);
+            let or: BoxRefMut<_, str> = or.map_mut(|x| &mut x.1[..5]);
             assert_eq!(&*or, "hello");
         }
 
         #[test]
         fn map_chained() {
             let or: BoxRefMut<String> = Box::new(example().1).into();
-            let or: BoxRefMut<_, str> = or.map(|x| &mut x[1..5]);
-            let or: BoxRefMut<_, str> = or.map(|x| &mut x[..2]);
+            let or: BoxRefMut<_, str> = or.map_mut(|x| &mut x[1..5]);
+            let or: BoxRefMut<_, str> = or.map_mut(|x| &mut x[..2]);
             assert_eq!(&*or, "el");
         }
 
         #[test]
         fn map_chained_inference() {
             let or = BoxRefMut::new(Box::new(example().1))
-                .map(|x| &mut x[..5])
-                .map(|x| &mut x[1..3]);
+                .map_mut(|x| &mut x[..5])
+                .map_mut(|x| &mut x[1..3]);
             assert_eq!(&*or, "el");
         }
 
         #[test]
-        fn try_map() {
+        fn try_map_mut() {
             let or: BoxRefMut<String> = Box::new(example().1).into();
-            let or: Result<BoxRefMut<_, str>, ()> = or.try_map(|x| Ok(&mut x[1..5]));
+            let or: Result<BoxRefMut<_, str>, ()> = or.try_map_mut(|x| Ok(&mut x[1..5]));
             assert_eq!(&*or.unwrap(), "ello");
 
             let or: BoxRefMut<String> = Box::new(example().1).into();
-            let or: Result<BoxRefMut<_, str>, ()> = or.try_map(|_| Err(()));
+            let or: Result<BoxRefMut<_, str>, ()> = or.try_map_mut(|_| Err(()));
             assert!(or.is_err());
         }
 
         #[test]
         fn owner() {
             let or: BoxRefMut<String> = Box::new(example().1).into();
-            let or = or.map(|x| &mut x[..5]);
+            let or = or.map_mut(|x| &mut x[..5]);
             assert_eq!(&*or, "hello");
             assert_eq!(&**or.owner(), "hello world");
         }
@@ -1042,7 +1106,7 @@ mod tests {
         #[test]
         fn into_inner() {
             let or: BoxRefMut<String> = Box::new(example().1).into();
-            let or = or.map(|x| &mut x[..5]);
+            let or = or.map_mut(|x| &mut x[..5]);
             assert_eq!(&*or, "hello");
             let s = *or.into_inner();
             assert_eq!(&s, "hello world");
@@ -1051,7 +1115,7 @@ mod tests {
         #[test]
         fn fmt_debug() {
             let or: BoxRefMut<String> = Box::new(example().1).into();
-            let or = or.map(|x| &mut x[..5]);
+            let or = or.map_mut(|x| &mut x[..5]);
             let s = format!("{:?}", or);
             assert_eq!(&s,
                        "OwningRefMut { owner: \"hello world\", reference: \"hello\" }");
@@ -1060,10 +1124,10 @@ mod tests {
         #[test]
         fn erased_owner() {
             let o1: BoxRefMut<Example, str> = BoxRefMut::new(Box::new(example()))
-                .map(|x| &mut x.1[..]);
+                .map_mut(|x| &mut x.1[..]);
 
             let o2: BoxRefMut<String, str> = BoxRefMut::new(Box::new(example().1))
-                .map(|x| &mut x[..]);
+                .map_mut(|x| &mut x[..]);
 
             let os: Vec<ErasedBoxRefMut<str>> = vec![o1.erase_owner(), o2.erase_owner()];
             assert!(os.iter().all(|e| &e[..] == "hello world"));
@@ -1075,7 +1139,7 @@ mod tests {
             let bar = &mut foo;
 
             let o: BoxRefMut<&mut [i32; 2]> = Box::new(bar).into();
-            let o: BoxRefMut<&mut [i32; 2], i32> = o.map(|a: &mut &mut [i32; 2]| &mut a[0]);
+            let o: BoxRefMut<&mut [i32; 2], i32> = o.map_mut(|a: &mut &mut [i32; 2]| &mut a[0]);
             let o: BoxRefMut<Erased, i32> = o.erase_owner();
 
             assert_eq!(*o, 413);
