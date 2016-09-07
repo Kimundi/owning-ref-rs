@@ -338,6 +338,7 @@ use std::fmt::{self, Debug};
 use std::marker::{Send, Sync};
 use std::cmp::{Eq, PartialEq, Ord, PartialOrd, Ordering};
 use std::hash::{Hash, Hasher};
+use std::borrow::Borrow;
 
 impl<O, T: ?Sized> Deref for OwningRef<O, T> {
     type Target = T;
@@ -351,6 +352,12 @@ impl<O, T: ?Sized> Deref for OwningRef<O, T> {
 
 impl<O, T: ?Sized> AsRef<T> for OwningRef<O, T> {
     fn as_ref(&self) -> &T {
+        &*self
+    }
+}
+
+impl<O, T: ?Sized> Borrow<T> for OwningRef<O, T> {
+    fn borrow(&self) -> &T {
         &*self
     }
 }
@@ -492,9 +499,11 @@ pub type ErasedArcRef<U> = OwningRef<Arc<Erased>, U>;
 
 #[cfg(test)]
 mod tests {
-    use super::{OwningRef, BoxRef, Erased, ErasedBoxRef};
+    use super::{OwningRef, RcRef, BoxRef, Erased, ErasedBoxRef};
     use std::cmp::{PartialEq, Ord, PartialOrd, Ordering};
     use std::hash::{Hash, Hasher, SipHasher};
+    use std::collections::HashMap;
+    use std::rc::Rc;
 
     #[derive(Debug, PartialEq)]
     struct Example(u32, String, [u8; 3]);
@@ -696,5 +705,17 @@ mod tests {
         or2.hash(&mut h2);
 
         assert_eq!(h1.finish(), h2.finish());
+    }
+
+    #[test]
+    fn borrow() {
+        let mut hash = HashMap::new();
+        let     key  = RcRef::<String>::new(Rc::new("foo-bar".to_string())).map(|s| &s[..]);
+
+        hash.insert(key.clone().map(|s| &s[..3]), 42);
+        hash.insert(key.clone().map(|s| &s[4..]), 23);
+
+        assert_eq!(hash.get("foo"), Some(&42));
+        assert_eq!(hash.get("bar"), Some(&23));
     }
 }
