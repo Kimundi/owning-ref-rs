@@ -242,6 +242,20 @@ impl<O, T: ?Sized> OwningRef<O, T> {
         }
     }
 
+    /// Like `new`, but dosen’t require `O` to implement the `StableAddress` trait.
+    /// Instead, the caller is resonsible to make the same promises as implementing the trait.
+    ///
+    /// This is useful to use when coherence rules prevent implememnting the trait
+    /// without adding a dependency to this crate in a third-party library.
+    pub unsafe fn new_assert_stable_address(o: O) -> Self
+        where O: Deref<Target = T>,
+    {
+        OwningRef {
+            reference: &*o,
+            owner: o,
+        }
+    }
+
     /// Converts `self` into a new owning reference that points at something reachable
     /// from the previous one.
     ///
