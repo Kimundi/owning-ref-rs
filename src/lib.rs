@@ -350,6 +350,8 @@ impl<O, T: ?Sized> Deref for OwningRef<O, T> {
     }
 }
 
+unsafe impl<O, T: ?Sized> StableAddress for OwningRef<O, T> {}
+
 impl<O, T: ?Sized> AsRef<T> for OwningRef<O, T> {
     fn as_ref(&self) -> &T {
         &*self
@@ -391,6 +393,9 @@ impl<O, T: ?Sized> Clone for OwningRef<O, T>
         }
     }
 }
+
+unsafe impl<O, T: ?Sized> CloneStableAddress for OwningRef<O, T>
+    where O: CloneStableAddress {}
 
 unsafe impl<O: Send, T: ?Sized> Send for OwningRef<O, T> {}
 unsafe impl<O: Sync, T: ?Sized> Sync for OwningRef<O, T> {}
