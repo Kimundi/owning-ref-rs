@@ -13,6 +13,10 @@ provided by `Box<T>`, `Rc<T>`, etc.
 Also provided are typedefs for common owner type combinations,
 which allows for less verbose type signatures. For example, `BoxRef<T>` instead of `OwningRef<Box<T>, T>`.
 
+The crate also provides the `OwningHandle` type, which allows bundling
+a dependent handle object along with the data it depends on. See the
+documentation around `OwningHandle` for more details.
+
 # Examples
 
 ## Basics
@@ -215,7 +219,7 @@ pub unsafe trait IntoErased<'a> {
 }
 
 /////////////////////////////////////////////////////////////////////////////
-// inherent API
+// OwningRef
 /////////////////////////////////////////////////////////////////////////////
 
 impl<O, T: ?Sized> OwningRef<O, T> {
@@ -343,10 +347,88 @@ impl<O, T: ?Sized> OwningRef<O, T> {
 }
 
 /////////////////////////////////////////////////////////////////////////////
+// OwningHandle
+/////////////////////////////////////////////////////////////////////////////
+
+use std::ops::{Deref, DerefMut};
+
+/// `OwningHandle` is a complement to `OwningRef`. Where `OwningRef` allows
+/// consumers to pass around an owned object and a dependent reference,
+/// `OwningHandle` contains an owned object and a dependent _object_.
+///
+/// `OwningHandle` can encapsulate a `RefMut` along with its associated
+/// `RefCell`, or an `RwLockReadGuard` along with its associated `RwLock`.
+/// However, the API is completely generic and there are no restrictions on
+/// what types of owning and dependent objects may be used.
+///
+/// `OwningHandle` is created by passing an owner object (which dereferences
+/// to a stable address) along with a callback which receives a pointer to
+/// that stable location. The callback may then dereference the pointer and
+/// mint a dependent object, with the guarantee that the returned object will
+/// not outlive the referent of the pointer.
+///
+/// This does foist some unsafety onto the callback, which needs an `unsafe`
+/// block to dereference the pointer. It would be almost good enough for
+/// OwningHandle to pass a transmuted &'statc reference to the callback
+/// since the lifetime is infinite as far as the minted handle is concerned.
+/// However, even an `Fn` callback can still allow the reference to escape
+/// via a `StaticMutex` or similar, which technically violates the safety
+/// contract. Some sort of language support in the lifetime system could
+/// make this API a bit nicer.
+pub struct OwningHandle<O, H>
+    where O: StableAddress, H: Deref,
+{
+    handle: H,
+    _owner: O,
+}
+
+impl<O, H> Deref for OwningHandle<O, H>
+    where O: StableAddress, H: Deref,
+{
+    type Target = H::Target;
+    fn deref(&self) -> &H::Target {
+        self.handle.deref()
+    }
+}
+
+unsafe impl<O, H> StableAddress for OwningHandle<O, H>
+    where O: StableAddress, H: StableAddress,
+{}
+
+impl<O, H> DerefMut for OwningHandle<O, H>
+    where O: StableAddress, H: DerefMut,
+{
+    fn deref_mut(&mut self) -> &mut H::Target {
+        self.handle.deref_mut()
+    }
+}
+
+impl<O, H> OwningHandle<O, H>
+    where O: StableAddress, H: Deref,
+{
+    /// Create a new OwningHandle. The provided callback will be invoked with
+    /// a pointer to the object owned by `o`, and the returned value is stored
+    /// as the object to which this `OwningHandle` will forward `Deref` and
+    /// `DerefMut`.
+    pub fn new<F>(o: O, f: F) -> Self
+        where F: Fn(*const O::Target) -> H
+    {
+        let h: H;
+        {
+            h = f(o.deref() as *const O::Target);
+        }
+
+        OwningHandle {
+          handle: h,
+          _owner: o,
+        }
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////
 // std traits
 /////////////////////////////////////////////////////////////////////////////
 
-use std::ops::Deref;
 use std::convert::From;
 use std::fmt::{self, Debug};
 use std::marker::{Send, Sync};
@@ -518,7 +600,8 @@ pub type ErasedArcRef<U> = OwningRef<Arc<Erased>, U>;
 
 #[cfg(test)]
 mod tests {
-    use super::{OwningRef, RcRef, BoxRef, Erased, ErasedBoxRef};
+    use super::{OwningHandle, OwningRef};
+    use super::{RcRef, BoxRef, Erased, ErasedBoxRef};
     use std::cmp::{PartialEq, Ord, PartialOrd, Ordering};
     use std::hash::{Hash, Hasher, SipHasher};
     use std::collections::HashMap;
@@ -736,5 +819,33 @@ mod tests {
 
         assert_eq!(hash.get("foo"), Some(&42));
         assert_eq!(hash.get("bar"), Some(&23));
+    }
+
+    #[test]
+    fn owning_handle() {
+        use std::cell::RefCell;
+        let cell = Rc::new(RefCell::new(2));
+        let cell_ref = RcRef::new(cell);
+        let mut handle = OwningHandle::new(cell_ref, |x| unsafe { x.as_ref() }.unwrap().borrow_mut());
+        assert_eq!(*handle, 2);
+        *handle = 3;
+        assert_eq!(*handle, 3);
+    }
+
+    #[test]
+    fn nested() {
+        use std::cell::RefCell;
+        use std::sync::{Arc, RwLock};
+
+        let result = {
+            let complex = Rc::new(RefCell::new(Arc::new(RwLock::new("someString"))));
+            let curr = RcRef::new(complex);
+            let curr = OwningHandle::new(curr, |x| unsafe { x.as_ref() }.unwrap().borrow_mut());
+            let mut curr = OwningHandle::new(curr, |x| unsafe { x.as_ref() }.unwrap().try_write().unwrap());
+            assert_eq!(*curr, "someString");
+            *curr = "someOtherString";
+            curr
+        };
+        assert_eq!(*result, "someOtherString");
     }
 }
