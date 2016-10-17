@@ -237,8 +237,7 @@ impl<O, T: ?Sized> OwningRef<O, T> {
     /// }
     /// ```
     pub fn new(o: O) -> Self
-        where O: StableAddress,
-              O: Deref<Target = T>,
+        where O: StableAddress<Target = T>,
     {
         OwningRef {
             reference: &*o,
