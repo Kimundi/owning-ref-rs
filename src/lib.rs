@@ -202,6 +202,12 @@ pub struct OwningRef<O, T: ?Sized> {
     reference: *const T,
 }
 
+/// Mutable version of OwningRef.
+pub struct OwningRefMut<O, T: ?Sized> {
+    owner: O,
+    reference: *mut T,
+}
+
 /// Helper trait for an erased concrete type an owner dereferences to.
 /// This is used in form of a trait object for keeping
 /// something around to (virtually) call the destructor.
@@ -237,8 +243,7 @@ impl<O, T: ?Sized> OwningRef<O, T> {
     /// }
     /// ```
     pub fn new(o: O) -> Self
-        where O: StableAddress,
-              O: Deref<Target = T>,
+        where O: StableAddress<Target = T>,
     {
         OwningRef {
             reference: &*o,
@@ -385,6 +390,70 @@ impl<O, T: ?Sized> OwningRef<O, T> {
     }
 }
 
+impl<O, T: ?Sized> OwningRefMut<O, T> {
+    /// Creates a new owning mutable reference from a owner
+    /// initialized to the direct dereference of it.
+    ///
+    /// The semantics are similar to the corresponding method on `OwningRef`
+    pub fn new(mut o: O) -> Self
+        where O: StableAddress<Target = T>,
+              O: DerefMut<Target = T>,
+    {
+        OwningRefMut {
+            reference: &mut *o,
+            owner: o,
+        }
+    }
+
+    /// Like `new`, but dosen’t require `O` to implement the `StableAddress` trait.
+    ///
+    /// The semantics are similar to the corresponding method on `OwningRef`
+    pub unsafe fn new_assert_stable_address(mut o: O) -> Self
+        where O: DerefMut<Target = T>,
+    {
+        OwningRefMut {
+            reference: &mut *o,
+            owner: o,
+        }
+    }
+
+    /// Converts `self` into a new owning mutable reference that points at something
+    /// reachable from the previous one.
+    ///
+    /// The semantics are similar to the corresponding method on `OwningRef`
+    pub fn map<F, U: ?Sized>(mut self, f: F) -> OwningRefMut<O, U>
+        where O: StableAddress,
+              F: FnOnce(&mut T) -> &mut U
+    {
+        OwningRefMut {
+            reference: f(&mut self),
+            owner: self.owner,
+        }
+    }
+
+    /// Erases the concrete base type of the owner with a trait object.
+    ///
+    /// The semantics are similar to the corresponding method on `OwningRef`
+    pub fn erase_owner<'a>(self) -> OwningRefMut<O::Erased, T>
+        where O: IntoErased<'a>,
+    {
+        OwningRefMut {
+            reference: self.reference,
+            owner: self.owner.into_erased(),
+        }
+    }
+
+    /// A getter for the underlying owner.
+    pub fn owner(&self) -> &O {
+        &self.owner
+    }
+
+    /// Discards the reference and retrieves the owner.
+    pub fn into_inner(self) -> O {
+        self.owner
+    }
+}
+
 /////////////////////////////////////////////////////////////////////////////
 // OwningHandle
 /////////////////////////////////////////////////////////////////////////////
@@ -491,7 +560,7 @@ use std::fmt::{self, Debug};
 use std::marker::{Send, Sync};
 use std::cmp::{Eq, PartialEq, Ord, PartialOrd, Ordering};
 use std::hash::{Hash, Hasher};
-use std::borrow::Borrow;
+use std::borrow::{Borrow, BorrowMut};
 
 impl<O, T: ?Sized> Deref for OwningRef<O, T> {
     type Target = T;
@@ -503,9 +572,34 @@ impl<O, T: ?Sized> Deref for OwningRef<O, T> {
     }
 }
 
+impl<O, T: ?Sized> Deref for OwningRefMut<O, T> {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        unsafe {
+            &*self.reference
+        }
+    }
+}
+
+impl<O, T: ?Sized> DerefMut for OwningRefMut<O, T> {
+    fn deref_mut(&mut self) -> &mut T {
+        unsafe {
+            &mut *self.reference
+        }
+    }
+}
+
 unsafe impl<O, T: ?Sized> StableAddress for OwningRef<O, T> {}
+unsafe impl<O, T: ?Sized> StableAddress for OwningRefMut<O, T> {}
 
 impl<O, T: ?Sized> AsRef<T> for OwningRef<O, T> {
+    fn as_ref(&self) -> &T {
+        &*self
+    }
+}
+
+impl<O, T: ?Sized> AsRef<T> for OwningRefMut<O, T> {
     fn as_ref(&self) -> &T {
         &*self
     }
@@ -517,6 +611,18 @@ impl<O, T: ?Sized> Borrow<T> for OwningRef<O, T> {
     }
 }
 
+impl<O, T: ?Sized> Borrow<T> for OwningRefMut<O, T> {
+    fn borrow(&self) -> &T {
+        &*self
+    }
+}
+
+impl<O, T: ?Sized> BorrowMut<T> for OwningRefMut<O, T> {
+    fn borrow_mut(&mut self) -> &mut T {
+        &mut *self
+    }
+}
+
 impl<O, T: ?Sized> From<O> for OwningRef<O, T>
     where O: StableAddress, O: Deref<Target = T>,
 {
@@ -525,9 +631,26 @@ impl<O, T: ?Sized> From<O> for OwningRef<O, T>
     }
 }
 
+impl<O, T: ?Sized> From<O> for OwningRefMut<O, T>
+    where O: StableAddress, O: DerefMut<Target = T>,
+{
+    fn from(owner: O) -> Self {
+        OwningRefMut::new(owner)
+    }
+}
+
 // ^ FIXME: Is a Into impl for calling into_inner() possible as well?
 
 impl<O, T: ?Sized> Debug for OwningRef<O, T>
+    where O: Debug, T: Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "OwningRef {{ owner: {:?}, reference: {:?} }}",
+               self.owner(), &**self)
+    }
+}
+
+impl<O, T: ?Sized> Debug for OwningRefMut<O, T>
     where O: Debug, T: Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
@@ -553,6 +676,9 @@ unsafe impl<O, T: ?Sized> CloneStableAddress for OwningRef<O, T>
 unsafe impl<O: Send, T: ?Sized> Send for OwningRef<O, T> {}
 unsafe impl<O: Sync, T: ?Sized> Sync for OwningRef<O, T> {}
 
+unsafe impl<O: Send, T: ?Sized> Send for OwningRefMut<O, T> {}
+unsafe impl<O: Sync, T: ?Sized> Sync for OwningRefMut<O, T> {}
+
 impl Debug for Erased {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         write!(f, "<Erased>",)
@@ -565,9 +691,22 @@ impl<O, T: ?Sized> PartialEq for OwningRef<O, T> where T: PartialEq {
      }
 }
 
+impl<O, T: ?Sized> PartialEq for OwningRefMut<O, T> where T: PartialEq {
+    fn eq(&self, other: &Self) -> bool {
+        (&*self as &T).eq(&*other as &T)
+     }
+}
+
 impl<O, T: ?Sized> Eq for OwningRef<O, T> where T: Eq {}
+impl<O, T: ?Sized> Eq for OwningRefMut<O, T> where T: Eq {}
 
 impl<O, T: ?Sized> PartialOrd for OwningRef<O, T> where T: PartialOrd {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        (&*self as &T).partial_cmp(&*other as &T)
+    }
+}
+
+impl<O, T: ?Sized> PartialOrd for OwningRefMut<O, T> where T: PartialOrd {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         (&*self as &T).partial_cmp(&*other as &T)
     }
@@ -579,7 +718,19 @@ impl<O, T: ?Sized> Ord for OwningRef<O, T> where T: Ord {
     }
 }
 
+impl<O, T: ?Sized> Ord for OwningRefMut<O, T> where T: Ord {
+    fn cmp(&self, other: &Self) -> Ordering {
+        (&*self as &T).cmp(&*other as &T)
+    }
+}
+
 impl<O, T: ?Sized> Hash for OwningRef<O, T> where T: Hash {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        (&*self as &T).hash(state);
+    }
+}
+
+impl<O, T: ?Sized> Hash for OwningRefMut<O, T> where T: Hash {
     fn hash<H: Hasher>(&self, state: &mut H) {
         (&*self as &T).hash(state);
     }
@@ -657,8 +808,9 @@ pub type ErasedArcRef<U> = OwningRef<Arc<Erased>, U>;
 
 #[cfg(test)]
 mod tests {
-    use super::{OwningHandle, OwningRef};
+    use super::{OwningHandle, OwningRef, OwningRefMut};
     use super::{RcRef, BoxRef, Erased, ErasedBoxRef};
+    use std::cell::RefCell;
     use std::cmp::{PartialEq, Ord, PartialOrd, Ordering};
     use std::hash::{Hash, Hasher, SipHasher};
     use std::collections::HashMap;
@@ -674,6 +826,28 @@ mod tests {
     fn new_deref() {
         let or: OwningRef<Box<()>, ()> = OwningRef::new(Box::new(()));
         assert_eq!(&*or, &());
+    }
+
+    struct Foo {
+        u: u32,
+    }
+    struct Bar {
+        f: Foo,
+    }
+
+    #[test]
+    fn ref_mut() {
+        let a = RefCell::new(Bar { f: Foo { u: 42 } });
+        let mut b = OwningRefMut::new(a.borrow_mut());
+        assert_eq!(b.f.u, 42);
+        b.f.u = 43;
+        let mut c = b.map(|x| &mut x.f);
+        assert_eq!(c.u, 43);
+        c.u = 44;
+        let mut d = c.map(|x| &mut x.u);
+        assert_eq!(*d, 44);
+        *d = 45;
+        assert_eq!(*d, 45);
     }
 
     #[test]
