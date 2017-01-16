@@ -423,6 +423,24 @@ impl<O, H> OwningHandle<O, H>
           _owner: o,
         }
     }
+
+    /// Create a new OwningHandle. The provided callback will be invoked with
+    /// a pointer to the object owned by `o`, and the returned value is stored
+    /// as the object to which this `OwningHandle` will forward `Deref` and
+    /// `DerefMut`.
+    pub fn try_new<F, E>(o: O, f: F) -> Result<Self, E>
+        where F: Fn(*const O::Target) -> Result<H, E>
+    {
+        let h: H;
+        {
+            h = f(o.deref() as *const O::Target)?;
+        }
+
+        Ok(OwningHandle {
+          handle: h,
+          _owner: o,
+        })
+    }
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -830,6 +848,37 @@ mod tests {
         assert_eq!(*handle, 2);
         *handle = 3;
         assert_eq!(*handle, 3);
+    }
+
+    #[test]
+    fn try_owning_handle_ok() {
+        use std::cell::RefCell;
+        let cell = Rc::new(RefCell::new(2));
+        let cell_ref = RcRef::new(cell);
+        let mut handle = OwningHandle::try_new::<_, ()>(cell_ref, |x| {
+            Ok(unsafe {
+                x.as_ref()
+            }.unwrap().borrow_mut())
+        }).unwrap();
+        assert_eq!(*handle, 2);
+        *handle = 3;
+        assert_eq!(*handle, 3);
+    }
+
+    #[test]
+    fn try_owning_handle_err() {
+        use std::cell::RefCell;
+        let cell = Rc::new(RefCell::new(2));
+        let cell_ref = RcRef::new(cell);
+        let mut handle = OwningHandle::try_new::<_, ()>(cell_ref, |x| {
+            if false {
+                return Ok(unsafe {
+                    x.as_ref()
+                }.unwrap().borrow_mut())
+            }
+            Err(())
+        });
+        assert!(handle.is_err());
     }
 
     #[test]
