@@ -247,7 +247,7 @@ impl<O, T: ?Sized> OwningRef<O, T> {
     }
 
     /// Like `new`, but dosen’t require `O` to implement the `StableAddress` trait.
-    /// Instead, the caller is resonsible to make the same promises as implementing the trait.
+    /// Instead, the caller is responsible to make the same promises as implementing the trait.
     ///
     /// This is useful to use when coherence rules prevent implememnting the trait
     /// without adding a dependency to this crate in a third-party library.
@@ -896,5 +896,21 @@ mod tests {
             curr
         };
         assert_eq!(*result, "someOtherString");
+    }
+
+    #[test]
+    fn total_erase() {
+        let a: OwningRef<Vec<u8>, [u8]>
+            = OwningRef::new(vec![]).map(|x| &x[..]);
+        let b: OwningRef<Box<[u8]>, [u8]>
+            = OwningRef::new(vec![].into_boxed_slice()).map(|x| &x[..]);
+
+        let c: OwningRef<Box<Vec<u8>>, [u8]>
+            = OwningRef::new(Box::new(a.into_inner())).map(|x| &x[..]);
+        let d: OwningRef<Box<Box<[u8]>>, [u8]>
+            = OwningRef::new(Box::new(b.into_inner())).map(|x| &x[..]);
+
+        let e: OwningRef<Box<Erased>, [u8]> = c.erase_owner();
+        let f: OwningRef<Box<Erased>, [u8]> = d.erase_owner();
     }
 }
