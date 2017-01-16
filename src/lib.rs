@@ -290,6 +290,17 @@ impl<O, T: ?Sized> OwningRef<O, T> {
         }
     }
 
+    /// Variant of `map()` that may fail.
+    pub fn try_map<F, U: ?Sized, E>(self, f: F) -> Result<OwningRef<O, U>, E>
+        where O: StableAddress,
+              F: FnOnce(&T) -> Result<&U, E>
+    {
+        Ok(OwningRef {
+            reference: f(&self)?,
+            owner: self.owner,
+        })
+    }
+
     /// Converts `self` into a new owning reference with a different owner type.
     ///
     /// The new owner type needs to still contain the original owner in some way
@@ -955,5 +966,25 @@ mod tests {
 
         let _e: OwningRef<Box<Erased>, [u8]> = c.erase_owner();
         let _f: OwningRef<Box<Erased>, [u8]> = d.erase_owner();
+    }
+
+    #[test]
+    fn try_map1() {
+        use std::any::Any;
+
+        let x = Box::new(123_i32);
+        let y: Box<Any> = x;
+
+        OwningRef::new(y).try_map(|x| x.downcast_ref::<i32>().ok_or(())).is_ok();
+    }
+
+    #[test]
+    fn try_map2() {
+        use std::any::Any;
+
+        let x = Box::new(123_i32);
+        let y: Box<Any> = x;
+
+        OwningRef::new(y).try_map(|x| x.downcast_ref::<i32>().ok_or(())).is_err();
     }
 }
