@@ -290,6 +290,34 @@ impl<O, T: ?Sized> OwningRef<O, T> {
         }
     }
 
+    /// Converts `self` into a new owning reference with a different owner type.
+    ///
+    /// The new owner type needs to still contain the original owner in some way
+    /// so that the reference into it remains valid. This function is marked unsafe
+    /// because the user needs to manually uphold this guarantee.
+    pub unsafe fn map_owner<F, P>(self, f: F) -> OwningRef<P, T>
+        where O: StableAddress,
+              P: StableAddress,
+              F: FnOnce(O) -> P
+    {
+        OwningRef {
+            reference: self.reference,
+            owner: f(self.owner),
+        }
+    }
+
+    /// Converts `self` into a new owning reference where the onwer is wrapped
+    /// in an additional `Box<O>`.
+    ///
+    /// This can be used to safely erase the owner of any `OwningRef<O, T>`
+    /// to a `OwningRef<Box<Erased>, T>`.
+    pub fn map_owner_box(self) -> OwningRef<Box<O>, T> {
+        OwningRef {
+            reference: self.reference,
+            owner: Box::new(self.owner),
+        }
+    }
+
     /// Erases the concrete base type of the owner with a trait object.
     ///
     /// This allows mixing of owned references with different owner base types.
@@ -870,7 +898,7 @@ mod tests {
         use std::cell::RefCell;
         let cell = Rc::new(RefCell::new(2));
         let cell_ref = RcRef::new(cell);
-        let mut handle = OwningHandle::try_new::<_, ()>(cell_ref, |x| {
+        let handle = OwningHandle::try_new::<_, ()>(cell_ref, |x| {
             if false {
                 return Ok(unsafe {
                     x.as_ref()
@@ -905,12 +933,27 @@ mod tests {
         let b: OwningRef<Box<[u8]>, [u8]>
             = OwningRef::new(vec![].into_boxed_slice()).map(|x| &x[..]);
 
-        let c: OwningRef<Box<Vec<u8>>, [u8]>
-            = OwningRef::new(Box::new(a.into_inner())).map(|x| &x[..]);
-        let d: OwningRef<Box<Box<[u8]>>, [u8]>
-            = OwningRef::new(Box::new(b.into_inner())).map(|x| &x[..]);
+        let c: OwningRef<Rc<Vec<u8>>, [u8]> = unsafe {a.map_owner(Rc::new)};
+        let d: OwningRef<Rc<Box<[u8]>>, [u8]> = unsafe {b.map_owner(Rc::new)};
 
-        let e: OwningRef<Box<Erased>, [u8]> = c.erase_owner();
-        let f: OwningRef<Box<Erased>, [u8]> = d.erase_owner();
+        let e: OwningRef<Rc<Erased>, [u8]> = c.erase_owner();
+        let f: OwningRef<Rc<Erased>, [u8]> = d.erase_owner();
+
+        let _g = e.clone();
+        let _h = f.clone();
+    }
+
+    #[test]
+    fn total_erase_box() {
+        let a: OwningRef<Vec<u8>, [u8]>
+            = OwningRef::new(vec![]).map(|x| &x[..]);
+        let b: OwningRef<Box<[u8]>, [u8]>
+            = OwningRef::new(vec![].into_boxed_slice()).map(|x| &x[..]);
+
+        let c: OwningRef<Box<Vec<u8>>, [u8]> = a.map_owner_box();
+        let d: OwningRef<Box<Box<[u8]>>, [u8]> = b.map_owner_box();
+
+        let _e: OwningRef<Box<Erased>, [u8]> = c.erase_owner();
+        let _f: OwningRef<Box<Erased>, [u8]> = d.erase_owner();
     }
 }
