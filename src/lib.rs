@@ -441,6 +441,24 @@ impl<O, H> OwningHandle<O, H>
           _owner: o,
         })
     }
+
+    /// Update the value inside the OwningHandle. The provided callback will be
+    /// invoked with a pointer to the object owned by the `o` originally
+    /// provided upon construction, and a mutable reference to the value that
+    /// was returned by the construction callback.
+    pub fn update<F>(&mut self, f: F)
+        where F: Fn(*const O::Target, &mut H)
+    {
+        f(self._owner.deref() as *const O::Target, &mut self.handle);
+    }
+
+    /// Like `update`, except fallible.  Note that any modifications made to the
+    /// value will persist even if the callback returns an `Err`.
+    pub fn try_update<F, E>(&mut self, f: F) -> Result<(), E>
+        where F: Fn(*const O::Target, &mut H) -> Result<(), E>
+    {
+        f(self._owner.deref() as *const O::Target, &mut self.handle)
+    }
 }
 
 /////////////////////////////////////////////////////////////////////////////
