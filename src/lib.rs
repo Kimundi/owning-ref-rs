@@ -3,8 +3,8 @@
 /*!
 # An owning reference.
 
-This crate provides the _owning reference_ type `OwningRef` that enables it
-to bundle a reference together with the owner of the data it points to.
+This crate provides the _owning reference_ types `OwningRef` and `OwningRefMut`
+that enables it to bundle a reference together with the owner of the data it points to.
 This allows moving and dropping of a `OwningRef` without needing to recreate the reference.
 
 This can sometimes be useful because Rust borrowing rules normally prevent
@@ -38,11 +38,12 @@ fn return_owned_and_referenced() -> OwningRef<Vec<u8>, [u8]> {
 # }
 ```
 
-It works by requiring owner types to dereference to stable memory locations and preventing mutable access, which in practice requires an heap allocation as
-provided by `Box<T>`, `Rc<T>`, etc.
+It works by requiring owner types to dereference to stable memory locations
+and preventing mutable access to root containers, which in practice requires heap allocation
+as provided by `Box<T>`, `Rc<T>`, etc.
 
 Also provided are typedefs for common owner type combinations,
-which allows for less verbose type signatures. For example, `BoxRef<T>` instead of `OwningRef<Box<T>, T>`.
+which allow for less verbose type signatures. For example, `BoxRef<T>` instead of `OwningRef<Box<T>, T>`.
 
 The crate also provides the more advanced `OwningHandle` type,
 which allows more freedom in bundling a dependent handle object
@@ -208,6 +209,36 @@ fn main() {
     drop(refref);
 
     assert_eq!(*refcell.borrow(), (1, 2, 3, 4));
+}
+```
+
+## Mutable reference
+
+When the owned container implements `DerefMut`, it is also possible to make
+a _mutable owning reference_. (E.g. with `Box`, `RefMut`, `MutexGuard`)
+
+```
+extern crate owning_ref;
+use owning_ref::RefMutRefMut;
+use std::cell::{RefCell, RefMut};
+
+fn main() {
+    let refcell = RefCell::new((1, 2, 3, 4));
+
+    let mut refmut_refmut = {
+        let mut refmut_refmut = RefMutRefMut::new(refcell.borrow_mut()).map_mut(|x| &mut x.3);
+        assert_eq!(*refmut_refmut, 4);
+        *refmut_refmut *= 2;
+
+        refmut_refmut
+    };
+
+    assert_eq!(*refmut_refmut, 8);
+    *refmut_refmut *= 2;
+
+    drop(refmut_refmut);
+
+    assert_eq!(*refcell.borrow(), (1, 2, 3, 16));
 }
 ```
 */
