@@ -1791,5 +1791,29 @@ mod tests {
             let or: BoxRef<()> = or.into();
             assert_eq!(&*or, &());
         }
+
+        struct Foo {
+            u: u32,
+        }
+        struct Bar {
+            f: Foo,
+        }
+
+        #[test]
+        fn ref_mut() {
+            use std::cell::RefCell;
+
+            let a = RefCell::new(Bar { f: Foo { u: 42 } });
+            let mut b = OwningRefMut::new(a.borrow_mut());
+            assert_eq!(b.f.u, 42);
+            b.f.u = 43;
+            let mut c = b.map_mut(|x| &mut x.f);
+            assert_eq!(c.u, 43);
+            c.u = 44;
+            let mut d = c.map_mut(|x| &mut x.u);
+            assert_eq!(*d, 44);
+            *d = 45;
+            assert_eq!(*d, 45);
+        }
     }
 }
