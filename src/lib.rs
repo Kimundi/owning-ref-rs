@@ -7,15 +7,47 @@ This crate provides the _owning reference_ type `OwningRef` that enables it
 to bundle a reference together with the owner of the data it points to.
 This allows moving and dropping of a `OwningRef` without needing to recreate the reference.
 
+This can sometimes be useful because Rust borrowing rules normally prevent
+moving a type that has been moved from. For example, this kind of code gets rejected:
+
+```rust,ignore
+fn return_owned_and_referenced<'a>() -> (Vec<u8>, &'a [u8]) {
+    let v = vec![1, 2, 3, 4];
+    let s = &v[1..3];
+    (v, s)
+}
+```
+
+Even though, from a memory-layout point of view, this can be entirely safe
+if the new location of the vector still lives longer than the lifetime `'a`
+of the reference because the backing allocation of the vector does not change.
+
+This library enables this safe usage by keeping the owner and the reference
+bundled together in a wrapper type that ensure that lifetime constraint:
+
+```rust
+# extern crate owning_ref;
+# use owning_ref::OwningRef;
+# fn main() {
+fn return_owned_and_referenced() -> OwningRef<Vec<u8>, [u8]> {
+    let v = vec![1, 2, 3, 4];
+    let or = OwningRef::new(v);
+    let or = or.map(|v| &v[1..3]);
+    or
+}
+# }
+```
+
 It works by requiring owner types to dereference to stable memory locations and preventing mutable access, which in practice requires an heap allocation as
 provided by `Box<T>`, `Rc<T>`, etc.
 
 Also provided are typedefs for common owner type combinations,
 which allows for less verbose type signatures. For example, `BoxRef<T>` instead of `OwningRef<Box<T>, T>`.
 
-The crate also provides the `OwningHandle` type, which allows bundling
-a dependent handle object along with the data it depends on. See the
-documentation around `OwningHandle` for more details.
+The crate also provides the more advanced `OwningHandle` type,
+which allows more freedom in bundling a dependent handle object
+along with the data it depends on, at the cost of some unsafe needed in the API.
+See the documentation around `OwningHandle` for more details.
 
 # Examples
 
