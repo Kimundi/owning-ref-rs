@@ -750,14 +750,10 @@ use std::ops::{Deref, DerefMut};
 /// mint a dependent object, with the guarantee that the returned object will
 /// not outlive the referent of the pointer.
 ///
-/// This does foist some unsafety onto the callback, which needs an `unsafe`
-/// block to dereference the pointer. It would be almost good enough for
-/// OwningHandle to pass a transmuted &'statc reference to the callback
-/// since the lifetime is infinite as far as the minted handle is concerned.
-/// However, even an `Fn` callback can still allow the reference to escape
-/// via a `StaticMutex` or similar, which technically violates the safety
-/// contract. Some sort of language support in the lifetime system could
-/// make this API a bit nicer.
+/// Since the callback needs to dereference a raw pointer, it requires `unsafe`
+/// code. To avoid forcing this unsafety on most callers, the `ToHandle` trait is
+/// implemented for common data structures. Types that implement `ToHandle` can
+/// be wrapped into an `OwningHandle` without passing a callback.
 pub struct OwningHandle<O, H>
     where O: StableAddress, H: Deref,
 {
@@ -786,6 +782,46 @@ impl<O, H> DerefMut for OwningHandle<O, H>
     }
 }
 
+/// Trait to implement the conversion of owner to handle for common types.
+pub trait ToHandle {
+    /// The type of handle to be encapsulated by the OwningHandle.
+    type Handle: Deref;
+
+    /// Given an appropriately-long-lived pointer to ourselves, create a
+    /// handle to be encapsulated by the `OwningHandle`.
+    unsafe fn to_handle(x: *const Self) -> Self::Handle;
+}
+
+/// Trait to implement the conversion of owner to mutable handle for common types.
+pub trait ToHandleMut {
+    /// The type of handle to be encapsulated by the OwningHandle.
+    type HandleMut: DerefMut;
+
+    /// Given an appropriately-long-lived pointer to ourselves, create a
+    /// mutable handle to be encapsulated by the `OwningHandle`.
+    unsafe fn to_handle_mut(x: *const Self) -> Self::HandleMut;
+}
+
+impl<O, H> OwningHandle<O, H>
+    where O: StableAddress, O::Target: ToHandle<Handle = H>, H: Deref,
+{
+    /// Create a new `OwningHandle` for a type that implements `ToHandle`. For types
+    /// that don't implement `ToHandle`, callers may invoke `new_with_fn`, which accepts
+    /// a callback to perform the conversion.
+    pub fn new(o: O) -> Self {
+        OwningHandle::new_with_fn(o, |x| unsafe { O::Target::to_handle(x) })
+    }
+}
+
+impl<O, H> OwningHandle<O, H>
+    where O: StableAddress, O::Target: ToHandleMut<HandleMut = H>, H: DerefMut,
+{
+    /// Create a new mutable `OwningHandle` for a type that implements `ToHandleMut`.
+    pub fn new_mut(o: O) -> Self {
+        OwningHandle::new_with_fn(o, |x| unsafe { O::Target::to_handle_mut(x) })
+    }
+}
+
 impl<O, H> OwningHandle<O, H>
     where O: StableAddress, H: Deref,
 {
@@ -793,7 +829,7 @@ impl<O, H> OwningHandle<O, H>
     /// a pointer to the object owned by `o`, and the returned value is stored
     /// as the object to which this `OwningHandle` will forward `Deref` and
     /// `DerefMut`.
-    pub fn new<F>(o: O, f: F) -> Self
+    pub fn new_with_fn<F>(o: O, f: F) -> Self
         where F: Fn(*const O::Target) -> H
     {
         let h: H;
@@ -1032,7 +1068,7 @@ use std::boxed::Box;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::{MutexGuard, RwLockReadGuard, RwLockWriteGuard};
-use std::cell::{Ref, RefMut};
+use std::cell::{Ref, RefCell, RefMut};
 
 unsafe impl<T: ?Sized> StableAddress for Box<T> {}
 unsafe impl<T> StableAddress for Vec<T> {}
@@ -1048,6 +1084,20 @@ unsafe impl<'a, T: ?Sized> StableAddress for RefMut<'a, T> {}
 unsafe impl<'a, T: ?Sized> StableAddress for MutexGuard<'a, T> {}
 unsafe impl<'a, T: ?Sized> StableAddress for RwLockReadGuard<'a, T> {}
 unsafe impl<'a, T: ?Sized> StableAddress for RwLockWriteGuard<'a, T> {}
+
+impl<T: 'static> ToHandle for RefCell<T> {
+    type Handle = Ref<'static, T>;
+    unsafe fn to_handle(x: *const Self) -> Self::Handle { (*x).borrow() }
+}
+
+impl<T: 'static> ToHandleMut for RefCell<T> {
+    type HandleMut = RefMut<'static, T>;
+    unsafe fn to_handle_mut(x: *const Self) -> Self::HandleMut { (*x).borrow_mut() }
+}
+
+// NB: Implementing ToHandle{,Mut} for Mutex and RwLock requires a decision
+// about which handle creation to use (i.e. read() vs try_read()) as well as
+// what to do with error results.
 
 /// Typedef of a owning reference that uses a `Box` as the owner.
 pub type BoxRef<T, U = T> = OwningRef<Box<T>, U>;
@@ -1396,13 +1446,16 @@ mod tests {
         use super::super::OwningHandle;
         use super::super::RcRef;
         use std::rc::Rc;
+        use std::cell::RefCell;
+        use std::sync::Arc;
+        use std::sync::RwLock;
 
         #[test]
         fn owning_handle() {
             use std::cell::RefCell;
             let cell = Rc::new(RefCell::new(2));
             let cell_ref = RcRef::new(cell);
-            let mut handle = OwningHandle::new(cell_ref, |x| unsafe { x.as_ref() }.unwrap().borrow_mut());
+            let mut handle = OwningHandle::new_with_fn(cell_ref, |x| unsafe { x.as_ref() }.unwrap().borrow_mut());
             assert_eq!(*handle, 2);
             *handle = 3;
             assert_eq!(*handle, 3);
@@ -1447,8 +1500,42 @@ mod tests {
             let result = {
                 let complex = Rc::new(RefCell::new(Arc::new(RwLock::new("someString"))));
                 let curr = RcRef::new(complex);
-                let curr = OwningHandle::new(curr, |x| unsafe { x.as_ref() }.unwrap().borrow_mut());
-                let mut curr = OwningHandle::new(curr, |x| unsafe { x.as_ref() }.unwrap().try_write().unwrap());
+                let curr = OwningHandle::new_with_fn(curr, |x| unsafe { x.as_ref() }.unwrap().borrow_mut());
+                let mut curr = OwningHandle::new_with_fn(curr, |x| unsafe { x.as_ref() }.unwrap().try_write().unwrap());
+                assert_eq!(*curr, "someString");
+                *curr = "someOtherString";
+                curr
+            };
+            assert_eq!(*result, "someOtherString");
+        }
+
+        #[test]
+        fn owning_handle_safe() {
+            use std::cell::RefCell;
+            let cell = Rc::new(RefCell::new(2));
+            let cell_ref = RcRef::new(cell);
+            let handle = OwningHandle::new(cell_ref);
+            assert_eq!(*handle, 2);
+        }
+
+        #[test]
+        fn owning_handle_mut_safe() {
+            use std::cell::RefCell;
+            let cell = Rc::new(RefCell::new(2));
+            let cell_ref = RcRef::new(cell);
+            let mut handle = OwningHandle::new_mut(cell_ref);
+            assert_eq!(*handle, 2);
+            *handle = 3;
+            assert_eq!(*handle, 3);
+        }
+
+        #[test]
+        fn owning_handle_safe_2() {
+            let result = {
+                let complex = Rc::new(RefCell::new(Arc::new(RwLock::new("someString"))));
+                let curr = RcRef::new(complex);
+                let curr = OwningHandle::new_with_fn(curr, |x| unsafe { x.as_ref() }.unwrap().borrow_mut());
+                let mut curr = OwningHandle::new_with_fn(curr, |x| unsafe { x.as_ref() }.unwrap().try_write().unwrap());
                 assert_eq!(*curr, "someString");
                 *curr = "someOtherString";
                 curr
