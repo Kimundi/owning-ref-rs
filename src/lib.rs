@@ -997,10 +997,15 @@ impl<O, T: ?Sized> Clone for OwningRef<O, T>
 unsafe impl<O, T: ?Sized> CloneStableAddress for OwningRef<O, T>
     where O: CloneStableAddress {}
 
-unsafe impl<O: Send, T: ?Sized> Send for OwningRef<O, T> {}
-unsafe impl<O: Sync, T: ?Sized> Sync for OwningRef<O, T> {}
-unsafe impl<O: Send, T: ?Sized> Send for OwningRefMut<O, T> {}
-unsafe impl<O: Sync, T: ?Sized> Sync for OwningRefMut<O, T> {}
+unsafe impl<O, T: ?Sized> Send for OwningRef<O, T>
+    where O: Send, for<'a> (&'a T): Send {}
+unsafe impl<O, T: ?Sized> Sync for OwningRef<O, T>
+    where O: Sync, for<'a> (&'a T): Sync {}
+
+unsafe impl<O, T: ?Sized> Send for OwningRefMut<O, T>
+    where O: Send, for<'a> (&'a mut T): Send {}
+unsafe impl<O, T: ?Sized> Sync for OwningRefMut<O, T>
+    where O: Sync, for<'a> (&'a mut T): Sync {}
 
 impl Debug for Erased {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
