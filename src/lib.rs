@@ -830,7 +830,7 @@ impl<O, H> OwningHandle<O, H>
     /// as the object to which this `OwningHandle` will forward `Deref` and
     /// `DerefMut`.
     pub fn new_with_fn<F>(o: O, f: F) -> Self
-        where F: Fn(*const O::Target) -> H
+        where F: FnOnce(*const O::Target) -> H
     {
         let h: H;
         {
@@ -848,7 +848,7 @@ impl<O, H> OwningHandle<O, H>
     /// as the object to which this `OwningHandle` will forward `Deref` and
     /// `DerefMut`.
     pub fn try_new<F, E>(o: O, f: F) -> Result<Self, E>
-        where F: Fn(*const O::Target) -> Result<H, E>
+        where F: FnOnce(*const O::Target) -> Result<H, E>
     {
         let h: H;
         {
