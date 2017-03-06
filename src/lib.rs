@@ -717,12 +717,6 @@ impl<O, T: ?Sized> OwningRefMut<O, T> {
     // TODO: wrap_owner
 
     // FIXME: Naming convention?
-    /// A getter for the underlying owner.
-    pub fn owner(&self) -> &O {
-        &self.owner
-    }
-
-    // FIXME: Naming convention?
     /// Discards the reference and retrieves the owner.
     pub fn into_inner(self) -> O {
         self.owner
