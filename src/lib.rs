@@ -243,13 +243,8 @@ fn main() {
 ```
 */
 
-/// Marker trait for expressing that the memory address of the value
-/// reachable via a dereference remains identical even if `self` gets moved.
-pub unsafe trait StableAddress: Deref {}
-
-/// Marker trait for expressing that the memory address of the value
-/// reachable via a dereference remains identical even if `self` is a clone.
-pub unsafe trait CloneStableAddress: StableAddress + Clone {}
+extern crate stable_deref_trait;
+pub use stable_deref_trait::{StableDeref as StableAddress, CloneStableDeref as CloneStableAddress};
 
 /// An owning reference.
 ///
@@ -1074,21 +1069,6 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::{MutexGuard, RwLockReadGuard, RwLockWriteGuard};
 use std::cell::{Ref, RefCell, RefMut};
-
-unsafe impl<T: ?Sized> StableAddress for Box<T> {}
-unsafe impl<T> StableAddress for Vec<T> {}
-unsafe impl StableAddress for String {}
-
-unsafe impl<T: ?Sized> StableAddress for Rc<T> {}
-unsafe impl<T: ?Sized> CloneStableAddress for Rc<T> {}
-unsafe impl<T: ?Sized> StableAddress for Arc<T> {}
-unsafe impl<T: ?Sized> CloneStableAddress for Arc<T> {}
-
-unsafe impl<'a, T: ?Sized> StableAddress for Ref<'a, T> {}
-unsafe impl<'a, T: ?Sized> StableAddress for RefMut<'a, T> {}
-unsafe impl<'a, T: ?Sized> StableAddress for MutexGuard<'a, T> {}
-unsafe impl<'a, T: ?Sized> StableAddress for RwLockReadGuard<'a, T> {}
-unsafe impl<'a, T: ?Sized> StableAddress for RwLockWriteGuard<'a, T> {}
 
 impl<T: 'static> ToHandle for RefCell<T> {
     type Handle = Ref<'static, T>;
