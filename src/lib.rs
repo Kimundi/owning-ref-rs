@@ -1,5 +1,4 @@
 #![warn(missing_docs)]
-
 /*!
 # An owning reference.
 
@@ -242,6 +241,7 @@ fn main() {
 }
 ```
 */
+use std::marker::PhantomData;
 
 extern crate stable_deref_trait;
 pub use stable_deref_trait::{StableDeref as StableAddress, CloneStableDeref as CloneStableAddress};
@@ -258,6 +258,12 @@ pub use stable_deref_trait::{StableDeref as StableAddress, CloneStableDeref as C
 pub struct OwningRef<O, T: ?Sized> {
     owner: O,
     reference: *const T,
+}
+
+pub struct OwningIter<'a, O, I: Iterator<Item=&'a E>, E: 'a> {
+    owner: O,
+    iter: I,
+    phantom: PhantomData<&'a E>,
 }
 
 /// An mutable owning reference.
@@ -989,6 +995,33 @@ impl<O, T: ?Sized> Clone for OwningRef<O, T>
     }
 }
 
+impl<'a, O, T: Iterator<Item=&'a E>, E: 'a> Iterator for OwningIter<'a, O, T, E>
+    where O: CloneStableAddress,
+{
+    type Item = OwningRef<O, E>;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|v| OwningRef {
+            owner: self.owner.clone(),
+            reference: v,
+        })
+    }
+}
+
+impl<'a, O, T: 'a> OwningRef<O, T>
+    where O: CloneStableAddress,
+{
+    pub fn owning_iter<E: 'a>(self)
+        -> OwningIter<'a, O, <&'a T as IntoIterator>::IntoIter, E>
+        where &'a T: IntoIterator<Item=&'a E>,
+    {
+        OwningIter {
+            owner: self.owner.clone(),
+            iter: unsafe { (&*self.reference).into_iter() },
+            phantom: PhantomData,
+        }
+    }
+}
+
 unsafe impl<O, T: ?Sized> CloneStableAddress for OwningRef<O, T>
     where O: CloneStableAddress {}
 
@@ -1256,6 +1289,22 @@ mod tests {
             let os: Vec<ErasedBoxRef<str>> = vec![o1.erase_owner(), o2.erase_owner()];
             assert!(os.iter().all(|e| &e[..] == "hello world"));
         }
+
+        #[test]
+        fn erased_iter() {
+            let items: Vec<String> = vec!["hello".into(), "world".into()];
+            let rc = RcRef::new(Rc::new(items));
+            let iterator: Box<Iterator<Item=RcRef<Erased, str>>>;
+            iterator = Box::new(rc.owning_iter().map(|rc|
+                rc.map(|x| AsRef::<str>::as_ref(x)).erase_owner()
+            ));
+            assert_eq!(
+                "[OwningRef { owner: <Erased>, \
+                              reference: \"hello\" }, \
+                  OwningRef { owner: <Erased>, reference: \"world\" }]",
+                format!("{:?}", iterator.collect::<Vec<_>>()));
+        }
+
 
         #[test]
         fn non_static_erased_owner() {
