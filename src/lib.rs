@@ -709,7 +709,7 @@ impl<O, T: ?Sized> OwningRefMut<O, T> {
 
     // TODO: wrap_owner
 
-    /// A getter for the underlying owner.
+    /// A reference to the underlying owner.
     pub fn as_owner(&self) -> &O {
         &self.owner
     }
