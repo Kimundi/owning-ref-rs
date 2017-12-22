@@ -244,6 +244,7 @@ fn main() {
 */
 
 extern crate stable_deref_trait;
+use std::mem;
 pub use stable_deref_trait::{StableDeref as StableAddress, CloneStableDeref as CloneStableAddress};
 
 /// An owning reference.
@@ -293,7 +294,7 @@ pub unsafe trait IntoErased<'a> {
 /// Helper trait for erasing the concrete type of what an owner derferences to,
 /// for example `Box<T> -> Box<Erased + Send>`. This would be unneeded with
 /// higher kinded types support in the language.
-pub unsafe trait IntoErasedSend<'a>: Send {
+pub unsafe trait IntoErasedSend<'a> {
     /// Owner with the dereference type substituted to `Erased + Send`.
     type Erased: Send;
     /// Perform the type erasure.
@@ -303,7 +304,7 @@ pub unsafe trait IntoErasedSend<'a>: Send {
 /// Helper trait for erasing the concrete type of what an owner derferences to,
 /// for example `Box<T> -> Box<Erased + Send + Sync>`. This would be unneeded with
 /// higher kinded types support in the language.
-pub unsafe trait IntoErasedSendSync<'a>: Send + Sync {
+pub unsafe trait IntoErasedSendSync<'a> {
     /// Owner with the dereference type substituted to `Erased + Send + Sync`.
     type Erased: Send + Sync;
     /// Perform the type erasure.
@@ -1191,10 +1192,15 @@ unsafe impl<'a, T: Send + 'a> IntoErasedSend<'a> for Box<T> {
     }
 }
 
-unsafe impl<'a, T: Send + Sync + 'a> IntoErasedSendSync<'a> for Box<T> {
-    type Erased = Box<Erased + Send + Sync + 'a>;
+unsafe impl<'a, T: Send + 'a> IntoErasedSendSync<'a> for Box<T> {
+    type Erased = Box<Erased + Sync + Send + 'a>;
     fn into_erased_send_sync(self) -> Self::Erased {
-        self
+        let result: Box<Erased + Send + 'a> = self;
+        // This is safe since Erased can always implement Sync
+        // Only the destructor is available and it takes &mut self
+        unsafe {
+            mem::transmute(result)
+        }
     }
 }
 
