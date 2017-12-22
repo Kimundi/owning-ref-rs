@@ -291,6 +291,16 @@ pub unsafe trait IntoErased<'a> {
 }
 
 /// Helper trait for erasing the concrete type of what an owner derferences to,
+/// for example `Box<T> -> Box<Erased + Send>`. This would be unneeded with
+/// higher kinded types support in the language.
+pub unsafe trait IntoErasedSend<'a>: Send {
+    /// Owner with the dereference type substituted to `Erased + Send`.
+    type Erased: Send;
+    /// Perform the type erasure.
+    fn into_erased_send(self) -> Self::Erased;
+}
+
+/// Helper trait for erasing the concrete type of what an owner derferences to,
 /// for example `Box<T> -> Box<Erased + Send + Sync>`. This would be unneeded with
 /// higher kinded types support in the language.
 pub unsafe trait IntoErasedSendSync<'a>: Send + Sync {
@@ -470,6 +480,18 @@ impl<O, T: ?Sized> OwningRef<O, T> {
         OwningRef {
             reference: self.reference,
             owner: self.owner.into_erased(),
+        }
+    }
+
+    /// Erases the concrete base type of the owner with a trait object which implements `Send`.
+    ///
+    /// This allows mixing of owned references with different owner base types.
+    pub fn erase_send_owner<'a>(self) -> OwningRef<O::Erased, T>
+        where O: IntoErasedSend<'a>,
+    {
+        OwningRef {
+            reference: self.reference,
+            owner: self.owner.into_erased_send(),
         }
     }
 
@@ -1158,6 +1180,13 @@ unsafe impl<'a, T: 'a> IntoErased<'a> for Rc<T> {
 unsafe impl<'a, T: 'a> IntoErased<'a> for Arc<T> {
     type Erased = Arc<Erased + 'a>;
     fn into_erased(self) -> Self::Erased {
+        self
+    }
+}
+
+unsafe impl<'a, T: Send + 'a> IntoErasedSend<'a> for Box<T> {
+    type Erased = Box<Erased + Send + 'a>;
+    fn into_erased_send(self) -> Self::Erased {
         self
     }
 }
