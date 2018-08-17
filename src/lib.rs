@@ -1265,8 +1265,15 @@ mod tests {
             let foo = [413, 612];
             let bar = &foo;
 
+            // FIXME: lifetime inference fails us, and we can't easily define a lifetime for a closure
+            // (see https://github.com/rust-lang/rust/issues/22340)
+            // So we use a function to identify the lifetimes instead.
+            fn borrow<'a>(a: &'a &[i32; 2]) -> &'a i32 {
+                &a[0]
+            }
+
             let o: BoxRef<&[i32; 2]> = Box::new(bar).into();
-            let o: BoxRef<&[i32; 2], i32> = o.map(|a: &&[i32; 2]| &a[0]);
+            let o: BoxRef<&[i32; 2], i32> = o.map(borrow);
             let o: BoxRef<Erased, i32> = o.erase_owner();
 
             assert_eq!(*o, 413);
@@ -1696,8 +1703,15 @@ mod tests {
             let mut foo = [413, 612];
             let bar = &mut foo;
 
+            // FIXME: lifetime inference fails us, and we can't easily define a lifetime for a closure
+            // (see https://github.com/rust-lang/rust/issues/22340)
+            // So we use a function to identify the lifetimes instead.
+            fn borrow<'a>(a: &'a mut &mut [i32; 2]) -> &'a mut i32 {
+                &mut a[0]
+            }
+
             let o: BoxRefMut<&mut [i32; 2]> = Box::new(bar).into();
-            let o: BoxRefMut<&mut [i32; 2], i32> = o.map_mut(|a: &mut &mut [i32; 2]| &mut a[0]);
+            let o: BoxRefMut<&mut [i32; 2], i32> = o.map_mut(borrow);
             let o: BoxRefMut<Erased, i32> = o.erase_owner();
 
             assert_eq!(*o, 413);
