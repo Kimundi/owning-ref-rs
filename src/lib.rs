@@ -899,6 +899,8 @@ impl<O, T: ?Sized> DerefMut for OwningRefMut<O, T> {
 
 unsafe impl<O, T: ?Sized> StableAddress for OwningRef<O, T> {}
 
+unsafe impl<O, T: ?Sized> StableAddress for OwningRefMut<O, T> {}
+
 impl<O, T: ?Sized> AsRef<T> for OwningRef<O, T> {
     fn as_ref(&self) -> &T {
         &*self
