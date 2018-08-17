@@ -465,15 +465,13 @@ impl<O, T: ?Sized> OwningRef<O, T> {
 
     // TODO: wrap_owner
 
-    // FIXME: Naming convention?
-    /// A getter for the underlying owner.
-    pub fn owner(&self) -> &O {
+    /// A reference to the underlying owner.
+    pub fn as_owner(&self) -> &O {
         &self.owner
     }
 
-    // FIXME: Naming convention?
     /// Discards the reference and retrieves the owner.
-    pub fn into_inner(self) -> O {
+    pub fn into_owner(self) -> O {
         self.owner
     }
 }
@@ -711,15 +709,18 @@ impl<O, T: ?Sized> OwningRefMut<O, T> {
 
     // TODO: wrap_owner
 
-    // FIXME: Naming convention?
-    /// A getter for the underlying owner.
-    pub fn owner(&self) -> &O {
+    /// A reference to the underlying owner.
+    pub fn as_owner(&self) -> &O {
         &self.owner
     }
 
-    // FIXME: Naming convention?
+    /// A mutable reference to the underlying owner.
+    pub fn as_owner_mut(&mut self) -> &mut O {
+        &mut self.owner
+    }
+
     /// Discards the reference and retrieves the owner.
-    pub fn into_inner(self) -> O {
+    pub fn into_owner(self) -> O {
         self.owner
     }
 }
@@ -952,7 +953,7 @@ impl<O, T: ?Sized> From<OwningRefMut<O, T>> for OwningRef<O, T>
     }
 }
 
-// ^ FIXME: Is a Into impl for calling into_inner() possible as well?
+// ^ FIXME: Is a Into impl for calling into_owner() possible as well?
 
 impl<O, T: ?Sized> Debug for OwningRef<O, T>
     where O: Debug,
@@ -961,7 +962,7 @@ impl<O, T: ?Sized> Debug for OwningRef<O, T>
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         write!(f,
                "OwningRef {{ owner: {:?}, reference: {:?} }}",
-               self.owner(),
+               self.as_owner(),
                &**self)
     }
 }
@@ -973,7 +974,7 @@ impl<O, T: ?Sized> Debug for OwningRefMut<O, T>
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         write!(f,
                "OwningRefMut {{ owner: {:?}, reference: {:?} }}",
-               self.owner(),
+               self.as_owner(),
                &**self)
     }
 }
@@ -1221,19 +1222,19 @@ mod tests {
         }
 
         #[test]
-        fn owner() {
+        fn as_owner() {
             let or: BoxRef<String> = Box::new(example().1).into();
             let or = or.map(|x| &x[..5]);
             assert_eq!(&*or, "hello");
-            assert_eq!(&**or.owner(), "hello world");
+            assert_eq!(&**or.as_owner(), "hello world");
         }
 
         #[test]
-        fn into_inner() {
+        fn into_owner() {
             let or: BoxRef<String> = Box::new(example().1).into();
             let or = or.map(|x| &x[..5]);
             assert_eq!(&*or, "hello");
-            let s = *or.into_inner();
+            let s = *or.into_owner();
             assert_eq!(&s, "hello world");
         }
 
@@ -1651,19 +1652,19 @@ mod tests {
         }
 
         #[test]
-        fn owner() {
+        fn as_owner() {
             let or: BoxRefMut<String> = Box::new(example().1).into();
             let or = or.map_mut(|x| &mut x[..5]);
             assert_eq!(&*or, "hello");
-            assert_eq!(&**or.owner(), "hello world");
+            assert_eq!(&**or.as_owner(), "hello world");
         }
 
         #[test]
-        fn into_inner() {
+        fn into_owner() {
             let or: BoxRefMut<String> = Box::new(example().1).into();
             let or = or.map_mut(|x| &mut x[..5]);
             assert_eq!(&*or, "hello");
-            let s = *or.into_inner();
+            let s = *or.into_owner();
             assert_eq!(&s, "hello world");
         }
 
