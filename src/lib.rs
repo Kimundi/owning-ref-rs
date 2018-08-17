@@ -858,12 +858,12 @@ impl<O, H> OwningHandle<O, H>
     }
 
     /// A getter for the underlying owner.
-    pub fn owner(&self) -> &O {
+    pub fn as_owner(&self) -> &O {
         &self._owner
     }
 
     /// Discards the dependent object and returns the owner.
-    pub fn into_inner(self) -> O {
+    pub fn into_owner(self) -> O {
         self._owner
     }
 }
