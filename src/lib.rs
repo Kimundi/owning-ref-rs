@@ -342,7 +342,7 @@ impl<O, T: ?Sized> OwningRef<O, T> {
     /// ```
     /// extern crate owning_ref;
     /// use owning_ref::OwningRef;
-    ///
+    /// 
     /// fn main() {
     ///     let owning_ref = OwningRef::new(Box::new([1, 2, 3, 4]));
     ///
@@ -854,6 +854,87 @@ impl<O, H> OwningHandle<O, H>
         Ok(OwningHandle {
           handle: h,
           _owner: o,
+        })
+    }
+
+    /// Converts `self` into a new OwningHandle that points at something reachable
+    /// from the previous one.
+    ///
+    /// This can be a reference to a field of `U`, something reachable from a field of
+    /// `U`, or even something unrelated with a `'static` lifetime.
+    ///
+    /// # Example
+    /// ```
+    /// extern crate owning_ref;
+    /// use owning_ref::OwningHandle;
+    ///
+    /// use std::rc::Rc;
+    /// use std::cell::RefCell;
+    /// 
+    /// struct Data {
+    ///     foo: usize,
+    ///     bar: usize
+    /// }
+    ///
+    /// fn main() {
+    ///     let data = Rc::new(Data {foo: 1, bar: 2});
+    ///     let owning_handle = OwningHandle::new_with_fn(data, |r| unsafe{ &*r });
+    ///
+    ///     // create a owning reference that points at the
+    ///     // third element of the array.
+    ///     let owning_handle = owning_handle.map(|data| &data.bar);
+    ///     assert_eq!(*owning_handle, 2);
+    /// }
+    /// ```
+    pub fn map<F, U>(self, f: F) -> OwningHandle<O, U>
+        where O: StableAddress,
+              U: Deref,
+              F: FnOnce(H) -> U
+    {
+        OwningHandle {
+            handle: f(self.handle),
+            _owner: self._owner,
+        }
+    }
+
+    /// Tries to convert `self` into a new owning reference that points
+    /// at something reachable from the previous one.
+    ///
+    /// This can be a reference to a field of `U`, something reachable from a field of
+    /// `U`, or even something unrelated with a `'static` lifetime.
+    ///
+    /// # Example
+    /// ```
+    /// extern crate owning_ref;
+    /// use owning_ref::OwningHandle;
+    ///
+    /// use std::rc::Rc;
+    /// use std::cell::RefCell;
+    /// 
+    /// struct Data {
+    ///     foo: usize,
+    ///     bar: usize
+    /// }
+    /// fn main() {
+    ///     let data = Rc::new(Data {foo: 1, bar: 2});
+    ///     let owning_handle = OwningHandle::new_with_fn(data, |r| unsafe{ &*r });
+    ///
+    ///     // create a owning reference that points at the
+    ///     // third element of the array.
+    ///     let owning_handle = owning_handle.try_map(|data| {
+    ///         if data.foo == 1 { Ok(&data.bar) } else { Err(()) }
+    ///     });
+    ///     assert_eq!(*owning_handle.unwrap(), 2);
+    /// }
+    /// ```
+    pub fn try_map<F, U, E>(self, f: F) -> Result<OwningHandle<O, U>, E>
+        where O: StableAddress,
+              U: Deref, 
+              F: FnOnce(H) -> Result<U, E>
+    {
+        Ok(OwningHandle {
+            handle: f(self.handle)?,
+            _owner: self._owner,
         })
     }
 
