@@ -342,7 +342,7 @@ impl<O, T: ?Sized> OwningRef<O, T> {
     /// ```
     /// extern crate owning_ref;
     /// use owning_ref::OwningRef;
-    /// 
+    ///
     /// fn main() {
     ///     let owning_ref = OwningRef::new(Box::new([1, 2, 3, 4]));
     ///
@@ -880,8 +880,7 @@ impl<O, H> OwningHandle<O, H>
     ///     let data = Rc::new(Data {foo: 1, bar: 2});
     ///     let owning_handle = OwningHandle::new_with_fn(data, |r| unsafe{ &*r });
     ///
-    ///     // create a owning reference that points at the
-    ///     // third element of the array.
+    ///     // create a owning reference that points at the .bar field ot the Data
     ///     let owning_handle = owning_handle.map(|data| &data.bar);
     ///     assert_eq!(*owning_handle, 2);
     /// }
@@ -915,12 +914,12 @@ impl<O, H> OwningHandle<O, H>
     ///     foo: usize,
     ///     bar: usize
     /// }
+    ///
     /// fn main() {
     ///     let data = Rc::new(Data {foo: 1, bar: 2});
     ///     let owning_handle = OwningHandle::new_with_fn(data, |r| unsafe{ &*r });
     ///
-    ///     // create a owning reference that points at the
-    ///     // third element of the array.
+    ///     // create a owning reference that points at the .bar field ot the Data
     ///     let owning_handle = owning_handle.try_map(|data| {
     ///         if data.foo == 1 { Ok(&data.bar) } else { Err(()) }
     ///     });
