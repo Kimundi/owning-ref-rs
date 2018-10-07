@@ -12,4 +12,9 @@ repository = "https://github.com/Kimundi/owning-ref-rs"
 keywords = ["reference", "sibling", "field", "owning"]
 
 [dependencies]
-stable_deref_trait = "1.0.0"
+stable_deref_trait = { version = "1.0.0", default-features = false }
+
+[features]
+default = ["std"]
+alloc = ["stable_deref_trait/alloc"]
+std = ["stable_deref_trait/std"]
