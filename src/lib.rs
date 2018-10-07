@@ -1,3 +1,5 @@
+#![cfg_attr(feature = "alloc", feature(alloc))]
+#![cfg_attr(not(feature = "std"), no_std)]
 #![warn(missing_docs)]
 
 /*!
@@ -55,6 +57,7 @@ See the documentation around `OwningHandle` for more details.
 ## Basics
 
 ```
+
 extern crate owning_ref;
 use owning_ref::BoxRef;
 
@@ -415,6 +418,7 @@ impl<O, T: ?Sized> OwningRef<O, T> {
     ///
     /// This can be used to safely erase the owner of any `OwningRef<O, T>`
     /// to a `OwningRef<Box<Erased>, T>`.
+    #[cfg(any(feature = "alloc", feature = "std"))]
     pub fn map_owner_box(self) -> OwningRef<Box<O>, T> {
         OwningRef {
             reference: self.reference,
@@ -659,6 +663,7 @@ impl<O, T: ?Sized> OwningRefMut<O, T> {
     ///
     /// This can be used to safely erase the owner of any `OwningRefMut<O, T>`
     /// to a `OwningRefMut<Box<Erased>, T>`.
+    #[cfg(any(feature = "alloc", feature = "std"))]
     pub fn map_owner_box(self) -> OwningRefMut<Box<O>, T> {
         OwningRefMut {
             reference: self.reference,
@@ -1077,10 +1082,18 @@ impl<O, T: ?Sized> Hash for OwningRefMut<O, T> where T: Hash {
 // std types integration and convenience type defs
 /////////////////////////////////////////////////////////////////////////////
 
+#[cfg(feature = "alloc")]
 use std::boxed::Box;
+#[cfg(any(feature = "alloc", feature = "std"))]
 use std::rc::Rc;
+#[cfg(feature = "alloc")]
+use std::string::String;
+#[cfg(any(feature = "alloc", feature = "std"))]
 use std::sync::Arc;
+#[cfg(feature = "std")]
 use std::sync::{MutexGuard, RwLockReadGuard, RwLockWriteGuard};
+#[cfg(feature = "alloc")]
+use std::vec::Vec;
 use std::cell::{Ref, RefCell, RefMut};
 
 impl<T: 'static> ToHandle for RefCell<T> {
@@ -1098,15 +1111,20 @@ impl<T: 'static> ToHandleMut for RefCell<T> {
 // what to do with error results.
 
 /// Typedef of a owning reference that uses a `Box` as the owner.
+#[cfg(any(feature = "alloc", feature = "std"))]
 pub type BoxRef<T, U = T> = OwningRef<Box<T>, U>;
 /// Typedef of a owning reference that uses a `Vec` as the owner.
+#[cfg(any(feature = "alloc", feature = "std"))]
 pub type VecRef<T, U = T> = OwningRef<Vec<T>, U>;
 /// Typedef of a owning reference that uses a `String` as the owner.
+#[cfg(any(feature = "alloc", feature = "std"))]
 pub type StringRef = OwningRef<String, str>;
 
 /// Typedef of a owning reference that uses a `Rc` as the owner.
+#[cfg(any(feature = "alloc", feature = "std"))]
 pub type RcRef<T, U = T> = OwningRef<Rc<T>, U>;
 /// Typedef of a owning reference that uses a `Arc` as the owner.
+#[cfg(any(feature = "alloc", feature = "std"))]
 pub type ArcRef<T, U = T> = OwningRef<Arc<T>, U>;
 
 /// Typedef of a owning reference that uses a `Ref` as the owner.
@@ -1114,38 +1132,51 @@ pub type RefRef<'a, T, U = T> = OwningRef<Ref<'a, T>, U>;
 /// Typedef of a owning reference that uses a `RefMut` as the owner.
 pub type RefMutRef<'a, T, U = T> = OwningRef<RefMut<'a, T>, U>;
 /// Typedef of a owning reference that uses a `MutexGuard` as the owner.
+#[cfg(feature = "std")]
 pub type MutexGuardRef<'a, T, U = T> = OwningRef<MutexGuard<'a, T>, U>;
 /// Typedef of a owning reference that uses a `RwLockReadGuard` as the owner.
+#[cfg(feature = "std")]
 pub type RwLockReadGuardRef<'a, T, U = T> = OwningRef<RwLockReadGuard<'a, T>, U>;
 /// Typedef of a owning reference that uses a `RwLockWriteGuard` as the owner.
+#[cfg(feature = "std")]
 pub type RwLockWriteGuardRef<'a, T, U = T> = OwningRef<RwLockWriteGuard<'a, T>, U>;
 
 /// Typedef of a mutable owning reference that uses a `Box` as the owner.
+#[cfg(any(feature = "alloc", feature = "std"))]
 pub type BoxRefMut<T, U = T> = OwningRefMut<Box<T>, U>;
 /// Typedef of a mutable owning reference that uses a `Vec` as the owner.
+#[cfg(any(feature = "alloc", feature = "std"))]
 pub type VecRefMut<T, U = T> = OwningRefMut<Vec<T>, U>;
 /// Typedef of a mutable owning reference that uses a `String` as the owner.
+#[cfg(any(feature = "alloc", feature = "std"))]
 pub type StringRefMut = OwningRefMut<String, str>;
 
 /// Typedef of a mutable owning reference that uses a `RefMut` as the owner.
 pub type RefMutRefMut<'a, T, U = T> = OwningRefMut<RefMut<'a, T>, U>;
 /// Typedef of a mutable owning reference that uses a `MutexGuard` as the owner.
+#[cfg(feature = "std")]
 pub type MutexGuardRefMut<'a, T, U = T> = OwningRefMut<MutexGuard<'a, T>, U>;
 /// Typedef of a mutable owning reference that uses a `RwLockWriteGuard` as the owner.
+#[cfg(feature = "std")]
 pub type RwLockWriteGuardRefMut<'a, T, U = T> = OwningRefMut<RwLockWriteGuard<'a, T>, U>;
 
+#[cfg(any(feature = "alloc", feature = "std"))]
 unsafe impl<'a, T: 'a> IntoErased<'a> for Box<T> {
     type Erased = Box<Erased + 'a>;
     fn into_erased(self) -> Self::Erased {
         self
     }
 }
+
+#[cfg(any(feature = "alloc", feature = "std"))]
 unsafe impl<'a, T: 'a> IntoErased<'a> for Rc<T> {
     type Erased = Rc<Erased + 'a>;
     fn into_erased(self) -> Self::Erased {
         self
     }
 }
+
+#[cfg(any(feature = "alloc", feature = "std"))]
 unsafe impl<'a, T: 'a> IntoErased<'a> for Arc<T> {
     type Erased = Arc<Erased + 'a>;
     fn into_erased(self) -> Self::Erased {
@@ -1154,16 +1185,37 @@ unsafe impl<'a, T: 'a> IntoErased<'a> for Arc<T> {
 }
 
 /// Typedef of a owning reference that uses an erased `Box` as the owner.
+#[cfg(any(feature = "alloc", feature = "std"))]
 pub type ErasedBoxRef<U> = OwningRef<Box<Erased>, U>;
 /// Typedef of a owning reference that uses an erased `Rc` as the owner.
+#[cfg(any(feature = "alloc", feature = "std"))]
 pub type ErasedRcRef<U> = OwningRef<Rc<Erased>, U>;
 /// Typedef of a owning reference that uses an erased `Arc` as the owner.
+#[cfg(any(feature = "alloc", feature = "std"))]
 pub type ErasedArcRef<U> = OwningRef<Arc<Erased>, U>;
 
 /// Typedef of a mutable owning reference that uses an erased `Box` as the owner.
+#[cfg(any(feature = "alloc", feature = "std"))]
 pub type ErasedBoxRefMut<U> = OwningRefMut<Box<Erased>, U>;
 
-#[cfg(test)]
+/////////////////////////////////////////////////////////////////////////////
+// std facade for no_std
+/////////////////////////////////////////////////////////////////////////////
+
+#[cfg(not(feature = "std"))]
+mod std {
+    #[cfg(feature = "alloc")]
+    extern crate alloc;
+    #[cfg(feature = "alloc")]
+    pub use self::alloc::{boxed, rc, string, sync, vec};
+    pub use core::{borrow, cell, cmp, convert, fmt, hash, marker, ops};
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// Tests
+/////////////////////////////////////////////////////////////////////////////
+
+#[cfg(all(test, feature = "std"))]
 mod tests {
     mod owning_ref {
         use super::super::OwningRef;
