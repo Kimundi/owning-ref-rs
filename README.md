@@ -39,7 +39,7 @@ Add the following dependency to your Cargo manifest...
 
 ```toml
 [dependencies]
-owning_ref = "0.3"
+owning_ref = "0.4"
 ```
 
 ...and see the [docs](http://kimundi.github.io/owning-ref-rs/owning_ref/index.html) for how to use it.
