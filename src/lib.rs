@@ -362,6 +362,38 @@ impl<O, T: ?Sized> OwningRef<O, T> {
         }
     }
 
+    /// Converts `self` into a new owning reference that points at something reachable
+    /// from the previous one or from the owner itself.
+    ///
+    /// This can be a reference to a field of `U`, something reachable from a field of
+    /// `U` or from the owner `O`, or even something unrelated with a `'static` lifetime.
+    ///
+    /// # Example
+    /// ```
+    /// extern crate owning_ref;
+    /// use owning_ref::OwningRef;
+    ///
+    /// fn main() {
+    ///     let owning_ref = OwningRef::new(Box::new([1, 2, 3, 4]));
+    ///     let owning_ref = owning_ref.map(|array| &array[2]);
+    ///     assert_eq!(*owning_ref, 3);
+    ///
+    ///     // create a owning reference that points at the
+    ///     // second element of the array from the owning ref that was pointing to the third
+    ///     let owning_ref = owning_ref.map_with_owner(|array, _prev| &array[1]);
+    ///     assert_eq!(*owning_ref, 2);
+    /// }
+    /// ```
+    pub fn map_with_owner<F, U: ?Sized>(self, f: F) -> OwningRef<O, U>
+        where O: StableAddress,
+              F: for<'a> FnOnce(&'a O, &'a T) -> &'a U
+    {
+        OwningRef {
+            reference: f(&self.owner, &self),
+            owner: self.owner,
+        }
+    }
+
     /// Tries to convert `self` into a new owning reference that points
     /// at something reachable from the previous one.
     ///
@@ -390,6 +422,39 @@ impl<O, T: ?Sized> OwningRef<O, T> {
     {
         Ok(OwningRef {
             reference: f(&self)?,
+            owner: self.owner,
+        })
+    }
+
+    /// Tries to convert `self` into a new owning reference that points
+    /// at something reachable from the previous one.
+    ///
+    /// This can be a reference to a field of `U`, something reachable from a field of
+    /// `U`, or even something unrelated with a `'static` lifetime.
+    ///
+    /// # Example
+    /// ```
+    /// extern crate owning_ref;
+    /// use owning_ref::OwningRef;
+    ///
+    /// fn main() {
+    ///     let owning_ref = OwningRef::new(Box::new([1, 2, 3, 4]));
+    ///     let owning_ref = owning_ref.map(|array| &array[2]);
+    ///
+    ///     // create a owning reference that points at the
+    ///     // second element of the array from the owning ref that was pointing to the third
+    ///     let owning_ref = owning_ref.try_map_with_owner(|array, _prev| {
+    ///         if array[1] == 2 { Ok(&array[1]) } else { Err(()) }
+    ///     });
+    ///     assert_eq!(*owning_ref.unwrap(), 2);
+    /// }
+    /// ```
+    pub fn try_map_with_owner<F, U: ?Sized, E>(self, f: F) -> Result<OwningRef<O, U>, E>
+        where O: StableAddress,
+              F: for<'a> FnOnce(&'a O, &'a T) -> Result<&'a U, E>
+    {
+        Ok(OwningRef {
+            reference: f(&self.owner, &self)?,
             owner: self.owner,
         })
     }
@@ -1444,6 +1509,34 @@ mod tests {
             let y: Box<dyn Any> = x;
 
             OwningRef::new(y).try_map(|x| x.downcast_ref::<i32>().ok_or(())).is_err();
+        }
+
+        #[test]
+        fn map_with_owner() {
+            let owning_ref = OwningRef::new(Box::new([1, 2, 3, 4]));
+            let owning_ref = owning_ref.map(|array| &array[2]);
+            assert_eq!(*owning_ref, 3);
+
+            let owning_ref = owning_ref.map_with_owner(|array, _prev| &array[1]);
+            assert_eq!(*owning_ref, 2);
+        }
+
+        #[test]
+        fn try_map_with_owner_ok() {
+            let owning_ref = OwningRef::new(Box::new([1, 2, 3, 4]));
+            let owning_ref = owning_ref.map(|array| &array[2]);
+
+            let owning_ref = owning_ref.try_map_with_owner(|array, _prev| Ok(&array[1]) as Result<_, ()>);
+            assert_eq!(*owning_ref.unwrap(), 2);
+        }
+
+        #[test]
+        fn try_map_with_owner_err() {
+            let owning_ref = OwningRef::new(Box::new([1, 2, 3, 4]));
+            let owning_ref = owning_ref.map(|array| &array[2]);
+
+            let owning_ref = owning_ref.try_map_with_owner(|array, _prev| Err("error") as Result<&(), _>);
+            assert_eq!(owning_ref.unwrap_err(), "error");
         }
     }
 
