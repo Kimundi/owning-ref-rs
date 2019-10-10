@@ -281,7 +281,7 @@ pub trait Erased {}
 impl<T> Erased for T {}
 
 /// Helper trait for erasing the concrete type of what an owner derferences to,
-/// for example `Box<T> -> Box<Erased>`. This would be unneeded with
+/// for example `Box<T> -> Box<dyn Erased>`. This would be unneeded with
 /// higher kinded types support in the language.
 pub unsafe trait IntoErased<'a> {
     /// Owner with the dereference type substituted to `Erased`.
@@ -414,7 +414,7 @@ impl<O, T: ?Sized> OwningRef<O, T> {
     /// in an additional `Box<O>`.
     ///
     /// This can be used to safely erase the owner of any `OwningRef<O, T>`
-    /// to a `OwningRef<Box<Erased>, T>`.
+    /// to a `OwningRef<Box<dyn Erased>, T>`.
     pub fn map_owner_box(self) -> OwningRef<Box<O>, T> {
         OwningRef {
             reference: self.reference,
@@ -447,7 +447,7 @@ impl<O, T: ?Sized> OwningRef<O, T> {
     ///     let owning_ref_b: OwningRef<Box<Vec<(i32, bool)>>, i32>
     ///         = owning_ref_b.map(|a| &a[1].0);
     ///
-    ///     let owning_refs: [OwningRef<Box<Erased>, i32>; 2]
+    ///     let owning_refs: [OwningRef<Box<dyn Erased>, i32>; 2]
     ///         = [owning_ref_a.erase_owner(), owning_ref_b.erase_owner()];
     ///
     ///     assert_eq!(*owning_refs[0], 1);
@@ -658,7 +658,7 @@ impl<O, T: ?Sized> OwningRefMut<O, T> {
     /// in an additional `Box<O>`.
     ///
     /// This can be used to safely erase the owner of any `OwningRefMut<O, T>`
-    /// to a `OwningRefMut<Box<Erased>, T>`.
+    /// to a `OwningRefMut<Box<dyn Erased>, T>`.
     pub fn map_owner_box(self) -> OwningRefMut<Box<O>, T> {
         OwningRefMut {
             reference: self.reference,
@@ -691,7 +691,7 @@ impl<O, T: ?Sized> OwningRefMut<O, T> {
     ///     let owning_ref_mut_b: OwningRefMut<Box<Vec<(i32, bool)>>, i32>
     ///         = owning_ref_mut_b.map_mut(|a| &mut a[1].0);
     ///
-    ///     let owning_refs_mut: [OwningRefMut<Box<Erased>, i32>; 2]
+    ///     let owning_refs_mut: [OwningRefMut<Box<dyn Erased>, i32>; 2]
     ///         = [owning_ref_mut_a.erase_owner(), owning_ref_mut_b.erase_owner()];
     ///
     ///     assert_eq!(*owning_refs_mut[0], 1);
@@ -1015,9 +1015,9 @@ unsafe impl<O, T: ?Sized> Send for OwningRefMut<O, T>
 unsafe impl<O, T: ?Sized> Sync for OwningRefMut<O, T>
     where O: Sync, for<'a> (&'a mut T): Sync {}
 
-impl Debug for Erased {
+impl Debug for dyn Erased {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(f, "<Erased>",)
+        write!(f, "<dyn Erased>",)
     }
 }
 
@@ -1135,33 +1135,33 @@ pub type MutexGuardRefMut<'a, T, U = T> = OwningRefMut<MutexGuard<'a, T>, U>;
 pub type RwLockWriteGuardRefMut<'a, T, U = T> = OwningRefMut<RwLockWriteGuard<'a, T>, U>;
 
 unsafe impl<'a, T: 'a> IntoErased<'a> for Box<T> {
-    type Erased = Box<Erased + 'a>;
+    type Erased = Box<dyn Erased + 'a>;
     fn into_erased(self) -> Self::Erased {
         self
     }
 }
 unsafe impl<'a, T: 'a> IntoErased<'a> for Rc<T> {
-    type Erased = Rc<Erased + 'a>;
+    type Erased = Rc<dyn Erased + 'a>;
     fn into_erased(self) -> Self::Erased {
         self
     }
 }
 unsafe impl<'a, T: 'a> IntoErased<'a> for Arc<T> {
-    type Erased = Arc<Erased + 'a>;
+    type Erased = Arc<dyn Erased + 'a>;
     fn into_erased(self) -> Self::Erased {
         self
     }
 }
 
 /// Typedef of a owning reference that uses an erased `Box` as the owner.
-pub type ErasedBoxRef<U> = OwningRef<Box<Erased>, U>;
+pub type ErasedBoxRef<U> = OwningRef<Box<dyn Erased>, U>;
 /// Typedef of a owning reference that uses an erased `Rc` as the owner.
-pub type ErasedRcRef<U> = OwningRef<Rc<Erased>, U>;
+pub type ErasedRcRef<U> = OwningRef<Rc<dyn Erased>, U>;
 /// Typedef of a owning reference that uses an erased `Arc` as the owner.
-pub type ErasedArcRef<U> = OwningRef<Arc<Erased>, U>;
+pub type ErasedArcRef<U> = OwningRef<Arc<dyn Erased>, U>;
 
 /// Typedef of a mutable owning reference that uses an erased `Box` as the owner.
-pub type ErasedBoxRefMut<U> = OwningRefMut<Box<Erased>, U>;
+pub type ErasedBoxRefMut<U> = OwningRefMut<Box<dyn Erased>, U>;
 
 #[cfg(test)]
 mod tests {
@@ -1284,7 +1284,7 @@ mod tests {
 
             let o: BoxRef<&[i32; 2]> = Box::new(bar).into();
             let o: BoxRef<&[i32; 2], i32> = o.map(borrow);
-            let o: BoxRef<Erased, i32> = o.erase_owner();
+            let o: BoxRef<dyn Erased, i32> = o.erase_owner();
 
             assert_eq!(*o, 413);
         }
@@ -1405,8 +1405,8 @@ mod tests {
             let c: OwningRef<Rc<Vec<u8>>, [u8]> = unsafe {a.map_owner(Rc::new)};
             let d: OwningRef<Rc<Box<[u8]>>, [u8]> = unsafe {b.map_owner(Rc::new)};
 
-            let e: OwningRef<Rc<Erased>, [u8]> = c.erase_owner();
-            let f: OwningRef<Rc<Erased>, [u8]> = d.erase_owner();
+            let e: OwningRef<Rc<dyn Erased>, [u8]> = c.erase_owner();
+            let f: OwningRef<Rc<dyn Erased>, [u8]> = d.erase_owner();
 
             let _g = e.clone();
             let _h = f.clone();
@@ -1422,8 +1422,8 @@ mod tests {
             let c: OwningRef<Box<Vec<u8>>, [u8]> = a.map_owner_box();
             let d: OwningRef<Box<Box<[u8]>>, [u8]> = b.map_owner_box();
 
-            let _e: OwningRef<Box<Erased>, [u8]> = c.erase_owner();
-            let _f: OwningRef<Box<Erased>, [u8]> = d.erase_owner();
+            let _e: OwningRef<Box<dyn Erased>, [u8]> = c.erase_owner();
+            let _f: OwningRef<Box<dyn Erased>, [u8]> = d.erase_owner();
         }
 
         #[test]
@@ -1431,7 +1431,7 @@ mod tests {
             use std::any::Any;
 
             let x = Box::new(123_i32);
-            let y: Box<Any> = x;
+            let y: Box<dyn Any> = x;
 
             OwningRef::new(y).try_map(|x| x.downcast_ref::<i32>().ok_or(())).is_ok();
         }
@@ -1441,7 +1441,7 @@ mod tests {
             use std::any::Any;
 
             let x = Box::new(123_i32);
-            let y: Box<Any> = x;
+            let y: Box<dyn Any> = x;
 
             OwningRef::new(y).try_map(|x| x.downcast_ref::<i32>().ok_or(())).is_err();
         }
@@ -1722,7 +1722,7 @@ mod tests {
 
             let o: BoxRefMut<&mut [i32; 2]> = Box::new(bar).into();
             let o: BoxRefMut<&mut [i32; 2], i32> = o.map_mut(borrow);
-            let o: BoxRefMut<Erased, i32> = o.erase_owner();
+            let o: BoxRefMut<dyn Erased, i32> = o.erase_owner();
 
             assert_eq!(*o, 413);
         }
@@ -1824,8 +1824,8 @@ mod tests {
             let c: OwningRefMut<Box<Vec<u8>>, [u8]> = unsafe {a.map_owner(Box::new)};
             let d: OwningRefMut<Box<Box<[u8]>>, [u8]> = unsafe {b.map_owner(Box::new)};
 
-            let _e: OwningRefMut<Box<Erased>, [u8]> = c.erase_owner();
-            let _f: OwningRefMut<Box<Erased>, [u8]> = d.erase_owner();
+            let _e: OwningRefMut<Box<dyn Erased>, [u8]> = c.erase_owner();
+            let _f: OwningRefMut<Box<dyn Erased>, [u8]> = d.erase_owner();
         }
 
         #[test]
@@ -1838,8 +1838,8 @@ mod tests {
             let c: OwningRefMut<Box<Vec<u8>>, [u8]> = a.map_owner_box();
             let d: OwningRefMut<Box<Box<[u8]>>, [u8]> = b.map_owner_box();
 
-            let _e: OwningRefMut<Box<Erased>, [u8]> = c.erase_owner();
-            let _f: OwningRefMut<Box<Erased>, [u8]> = d.erase_owner();
+            let _e: OwningRefMut<Box<dyn Erased>, [u8]> = c.erase_owner();
+            let _f: OwningRefMut<Box<dyn Erased>, [u8]> = d.erase_owner();
         }
 
         #[test]
@@ -1847,7 +1847,7 @@ mod tests {
             use std::any::Any;
 
             let x = Box::new(123_i32);
-            let y: Box<Any> = x;
+            let y: Box<dyn Any> = x;
 
             OwningRefMut::new(y).try_map_mut(|x| x.downcast_mut::<i32>().ok_or(())).is_ok();
         }
@@ -1857,7 +1857,7 @@ mod tests {
             use std::any::Any;
 
             let x = Box::new(123_i32);
-            let y: Box<Any> = x;
+            let y: Box<dyn Any> = x;
 
             OwningRefMut::new(y).try_map_mut(|x| x.downcast_mut::<i32>().ok_or(())).is_err();
         }
@@ -1867,7 +1867,7 @@ mod tests {
             use std::any::Any;
 
             let x = Box::new(123_i32);
-            let y: Box<Any> = x;
+            let y: Box<dyn Any> = x;
 
             OwningRefMut::new(y).try_map(|x| x.downcast_ref::<i32>().ok_or(())).is_ok();
         }
@@ -1877,7 +1877,7 @@ mod tests {
             use std::any::Any;
 
             let x = Box::new(123_i32);
-            let y: Box<Any> = x;
+            let y: Box<dyn Any> = x;
 
             OwningRefMut::new(y).try_map(|x| x.downcast_ref::<i32>().ok_or(())).is_err();
         }
