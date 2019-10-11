@@ -1498,45 +1498,50 @@ mod tests {
             let x = Box::new(123_i32);
             let y: Box<dyn Any> = x;
 
-            OwningRef::new(y).try_map(|x| x.downcast_ref::<i32>().ok_or(())).is_ok();
+            OwningRef::new(y).try_map(|x| x.downcast_ref::<i32>().ok_or(())).unwrap();
         }
 
         #[test]
         fn try_map2() {
             use std::any::Any;
 
-            let x = Box::new(123_i32);
+            let x = Box::new(123_u32);
             let y: Box<dyn Any> = x;
 
-            OwningRef::new(y).try_map(|x| x.downcast_ref::<i32>().ok_or(())).is_err();
+            OwningRef::new(y).try_map(|x| x.downcast_ref::<i32>().ok_or(())).unwrap_err();
         }
 
         #[test]
         fn map_with_owner() {
-            let owning_ref = OwningRef::new(Box::new([1, 2, 3, 4]));
-            let owning_ref = owning_ref.map(|array| &array[2]);
-            assert_eq!(*owning_ref, 3);
+            let owning_ref: BoxRef<Example> = Box::new(example()).into();
+            let owning_ref = owning_ref.map(|owner| &owner.1);
 
-            let owning_ref = owning_ref.map_with_owner(|array, _prev| &array[1]);
-            assert_eq!(*owning_ref, 2);
+            owning_ref.map_with_owner(|owner, ref_field| {
+                assert_eq!(owner.1, *ref_field);
+                ref_field
+            });
         }
 
         #[test]
         fn try_map_with_owner_ok() {
-            let owning_ref = OwningRef::new(Box::new([1, 2, 3, 4]));
-            let owning_ref = owning_ref.map(|array| &array[2]);
+            let owning_ref: BoxRef<Example> = Box::new(example()).into();
+            let owning_ref = owning_ref.map(|owner| &owner.1);
 
-            let owning_ref = owning_ref.try_map_with_owner(|array, _prev| Ok(&array[1]) as Result<_, ()>);
-            assert_eq!(*owning_ref.unwrap(), 2);
+            owning_ref.try_map_with_owner(|owner, ref_field| {
+                assert_eq!(owner.1, *ref_field);
+                Ok(ref_field) as Result<_, ()>
+            }).unwrap();
         }
 
         #[test]
         fn try_map_with_owner_err() {
-            let owning_ref = OwningRef::new(Box::new([1, 2, 3, 4]));
-            let owning_ref = owning_ref.map(|array| &array[2]);
+            let owning_ref: BoxRef<Example> = Box::new(example()).into();
+            let owning_ref = owning_ref.map(|owner| &owner.1);
 
-            let owning_ref = owning_ref.try_map_with_owner(|array, _prev| Err("error") as Result<&(), _>);
-            assert_eq!(owning_ref.unwrap_err(), "error");
+            owning_ref.try_map_with_owner(|owner, ref_field| {
+                assert_eq!(owner.1, *ref_field);
+                Err(()) as Result<&(), _>
+            }).unwrap_err();
         }
     }
 
@@ -1942,17 +1947,17 @@ mod tests {
             let x = Box::new(123_i32);
             let y: Box<dyn Any> = x;
 
-            OwningRefMut::new(y).try_map_mut(|x| x.downcast_mut::<i32>().ok_or(())).is_ok();
+            OwningRefMut::new(y).try_map_mut(|x| x.downcast_mut::<i32>().ok_or(())).unwrap();
         }
 
         #[test]
         fn try_map2() {
             use std::any::Any;
 
-            let x = Box::new(123_i32);
+            let x = Box::new(123_u32);
             let y: Box<dyn Any> = x;
 
-            OwningRefMut::new(y).try_map_mut(|x| x.downcast_mut::<i32>().ok_or(())).is_err();
+            OwningRefMut::new(y).try_map_mut(|x| x.downcast_mut::<i32>().ok_or(())).unwrap_err();
         }
 
         #[test]
@@ -1962,17 +1967,17 @@ mod tests {
             let x = Box::new(123_i32);
             let y: Box<dyn Any> = x;
 
-            OwningRefMut::new(y).try_map(|x| x.downcast_ref::<i32>().ok_or(())).is_ok();
+            OwningRefMut::new(y).try_map(|x| x.downcast_ref::<i32>().ok_or(())).unwrap();
         }
 
         #[test]
         fn try_map4() {
             use std::any::Any;
 
-            let x = Box::new(123_i32);
+            let x = Box::new(123_u32);
             let y: Box<dyn Any> = x;
 
-            OwningRefMut::new(y).try_map(|x| x.downcast_ref::<i32>().ok_or(())).is_err();
+            OwningRefMut::new(y).try_map(|x| x.downcast_ref::<i32>().ok_or(())).unwrap_err();
         }
 
         #[test]
