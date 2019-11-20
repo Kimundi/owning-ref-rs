@@ -1229,6 +1229,7 @@ pub type ErasedArcRef<U> = OwningRef<Arc<dyn Erased>, U>;
 pub type ErasedBoxRefMut<U> = OwningRefMut<Box<dyn Erased>, U>;
 
 #[cfg(test)]
+#[allow(clippy::blacklisted_name)]
 mod tests {
     mod owning_ref {
         use super::super::OwningRef;
