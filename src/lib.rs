@@ -868,6 +868,12 @@ where
     }
 }
 
+unsafe impl<O, H> AliasableAddress for OwningHandle<O, H>
+where
+    O: AliasableAddress + StableAddress,
+    H: AliasableAddress + StableAddress,
+{}
+
 unsafe impl<O, H> StableAddress for OwningHandle<O, H>
 where
     O: AliasableAddress + StableAddress,
