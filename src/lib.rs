@@ -922,6 +922,19 @@ impl<O, H> OwningHandle<O, H>
         })
     }
 
+    /// Converts `self` into a new owning handle based on a function
+    /// that converts the existing handle into a new one.
+    ///
+    /// This can be used to convert a RAII guard, for example.
+    pub fn map<F, N: Deref>(self, f: F) -> OwningHandle<O, N>
+        where F: FnOnce(H) -> N
+    {
+        OwningHandle {
+          handle: f(self.handle),
+          _owner: self._owner,
+        }
+    }
+
     /// A getter for the underlying owner.
     pub fn as_owner(&self) -> &O {
         &self._owner
@@ -1562,6 +1575,17 @@ mod tests {
             assert_eq!(*handle, 2);
             *handle = 3;
             assert_eq!(*handle, 3);
+        }
+
+        #[test]
+        fn owning_handle_map() {
+            use std::cell::{Ref, RefCell};
+            let cell = Rc::new(RefCell::new(('a', 'b')));
+            let cell_ref = RcRef::new(cell);
+            let handle = OwningHandle::new_with_fn(cell_ref, |x| unsafe { x.as_ref() }.unwrap().borrow());
+            assert_eq!(*handle, ('a', 'b'));
+            let handle_map = handle.map(|r| Ref::map(r, |i| &i.0));
+            assert_eq!(*handle_map, 'a');
         }
 
         #[test]
