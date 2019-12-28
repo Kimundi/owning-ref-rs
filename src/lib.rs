@@ -936,8 +936,19 @@ impl<O, H> OwningHandle<O, H>
     }
 
     /// A getter for the underlying owner.
-    pub fn as_owner(&self) -> &O {
-        &self._owner
+        pub fn as_owner(&self) -> &O {
+            &self._owner
+    }
+
+    /// Consume the handle, applying a closure to the handle.
+    pub fn consume<F, R>(self, f: F) -> R
+        where F: FnOnce(H) -> R {
+        f(self.handle)
+    }
+
+    /// A getter for the handle.
+    pub fn as_handle(&self) -> &H {
+        &self.handle
     }
 
     /// Discards the dependent object and returns the owner.
@@ -1581,11 +1592,33 @@ mod tests {
         fn owning_handle_map() {
             use std::cell::{Ref, RefCell};
             let cell = Rc::new(RefCell::new(('a', 'b')));
-            let cell_ref = RcRef::new(cell);
-            let handle = OwningHandle::new_with_fn(cell_ref, |x| unsafe { x.as_ref() }.unwrap().borrow());
+            let handle = OwningHandle::new_with_fn(cell, |x| unsafe { x.as_ref() }.unwrap().borrow());
             assert_eq!(*handle, ('a', 'b'));
             let handle_map = handle.map(|r| Ref::map(r, |i| &i.0));
             assert_eq!(*handle_map, 'a');
+        }
+
+        #[test]
+        fn owning_hadle_consume() {
+            struct Guard<'a> {
+                int: &'a u32,
+            }
+            impl<'a> Guard<'a> {
+                fn by_move(self) -> u32 {
+                    *self.int
+                }
+            }
+            impl<'a> std::ops::Deref for Guard<'a> {
+                type Target = u32;
+                fn deref(&self) -> &Self::Target {
+                    &self.int
+                }
+            }
+
+            let cell = Box::new(123u32);
+            let handle = OwningHandle::new_with_fn(cell, |x| unsafe { Guard{ int:& *x } });
+            let r = handle.consume(|g| g.by_move());
+            assert_eq!(r, 123);
         }
 
         #[test]
