@@ -35,7 +35,7 @@ fn return_owned_and_referenced() -> OwningRef<Vec<u8>, [u8]> {
 To get started, add the following to `Cargo.toml`.
 
 ```toml
-owning_ref = "0.4"
+owning_ref = "0.4.1"
 ```
 
 ...and see the [docs](http://kimundi.github.io/owning-ref-rs/owning_ref/index.html) for how to use it.
