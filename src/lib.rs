@@ -4,7 +4,7 @@
 # An owning reference.
 
 This crate provides the _owning reference_ types `OwningRef` and `OwningRefMut`
-that enables it to bundle a reference together with the owner of the data it points to.
+that enables it to bundle a reference together with the owner of the data it points to. 
 This allows moving and dropping of a `OwningRef` without needing to recreate the reference.
 
 This can sometimes be useful because Rust borrowing rules normally prevent
@@ -244,7 +244,10 @@ fn main() {
 */
 
 extern crate stable_deref_trait;
+extern crate aliasable_deref_trait;
+
 pub use stable_deref_trait::{StableDeref as StableAddress, CloneStableDeref as CloneStableAddress};
+pub use aliasable_deref_trait::{AliasableDeref as AliasableAddress};
 
 /// An owning reference.
 ///
@@ -309,7 +312,7 @@ impl<O, T: ?Sized> OwningRef<O, T> {
     /// }
     /// ```
     pub fn new(o: O) -> Self
-        where O: StableAddress,
+        where O: AliasableAddress + StableAddress,
               O: Deref<Target = T>,
     {
         OwningRef {
@@ -324,6 +327,21 @@ impl<O, T: ?Sized> OwningRef<O, T> {
     /// This is useful for cases where coherence rules prevents implementing the trait
     /// without adding a dependency to this crate in a third-party library.
     pub unsafe fn new_assert_stable_address(o: O) -> Self
+        where O: AliasableAddress,
+              O: Deref<Target = T>,
+    {
+        OwningRef {
+            reference: &*o,
+            owner: o,
+        }
+    }
+
+    /// Like `new`, but doesn’t require `O` to implement the `StableAddress` or `AliasableAddress` trait.
+    /// Instead, the caller is responsible to make the same promises as implementing the trait.
+    ///
+    /// This is useful for cases where coherence rules prevents implementing the trait
+    /// without adding a dependency to this crate in a third-party library.
+    pub unsafe fn new_assert_aliasable_stable_address(o: O) -> Self
         where O: Deref<Target = T>,
     {
         OwningRef {
@@ -353,7 +371,7 @@ impl<O, T: ?Sized> OwningRef<O, T> {
     /// }
     /// ```
     pub fn map<F, U: ?Sized>(self, f: F) -> OwningRef<O, U>
-        where O: StableAddress,
+        where O: AliasableAddress + StableAddress,
               F: FnOnce(&T) -> &U
     {
         OwningRef {
@@ -385,7 +403,7 @@ impl<O, T: ?Sized> OwningRef<O, T> {
     /// }
     /// ```
     pub fn map_with_owner<F, U: ?Sized>(self, f: F) -> OwningRef<O, U>
-        where O: StableAddress,
+        where O: AliasableAddress + StableAddress,
               F: for<'a> FnOnce(&'a O, &'a T) -> &'a U
     {
         OwningRef {
@@ -417,7 +435,7 @@ impl<O, T: ?Sized> OwningRef<O, T> {
     /// }
     /// ```
     pub fn try_map<F, U: ?Sized, E>(self, f: F) -> Result<OwningRef<O, U>, E>
-        where O: StableAddress,
+        where O: AliasableAddress + StableAddress,
               F: FnOnce(&T) -> Result<&U, E>
     {
         Ok(OwningRef {
@@ -450,7 +468,7 @@ impl<O, T: ?Sized> OwningRef<O, T> {
     /// }
     /// ```
     pub fn try_map_with_owner<F, U: ?Sized, E>(self, f: F) -> Result<OwningRef<O, U>, E>
-        where O: StableAddress,
+        where O: AliasableAddress + StableAddress,
               F: for<'a> FnOnce(&'a O, &'a T) -> Result<&'a U, E>
     {
         Ok(OwningRef {
@@ -465,8 +483,8 @@ impl<O, T: ?Sized> OwningRef<O, T> {
     /// so that the reference into it remains valid. This function is marked unsafe
     /// because the user needs to manually uphold this guarantee.
     pub unsafe fn map_owner<F, P>(self, f: F) -> OwningRef<P, T>
-        where O: StableAddress,
-              P: StableAddress,
+        where O: AliasableAddress + StableAddress,
+              P: AliasableAddress + StableAddress,
               F: FnOnce(O) -> P
     {
         OwningRef {
@@ -556,7 +574,7 @@ impl<O, T: ?Sized> OwningRefMut<O, T> {
     /// }
     /// ```
     pub fn new(mut o: O) -> Self
-        where O: StableAddress,
+        where O: AliasableAddress + StableAddress,
               O: DerefMut<Target = T>,
     {
         OwningRefMut {
@@ -571,6 +589,21 @@ impl<O, T: ?Sized> OwningRefMut<O, T> {
     /// This is useful for cases where coherence rules prevents implementing the trait
     /// without adding a dependency to this crate in a third-party library.
     pub unsafe fn new_assert_stable_address(mut o: O) -> Self
+        where O: AliasableAddress,
+              O: DerefMut<Target = T>,
+    {
+        OwningRefMut {
+            reference: &mut *o,
+            owner: o,
+        }
+    }
+
+    /// Like `new`, but doesn’t require `O` to implement the `StableAddress` or `AliasableAddress` trait.
+    /// Instead, the caller is responsible to make the same promises as implementing the trait.
+    ///
+    /// This is useful for cases where coherence rules prevents implementing the trait
+    /// without adding a dependency to this crate in a third-party library.
+    pub unsafe fn new_assert_aliasable_stable_address(mut o: O) -> Self
         where O: DerefMut<Target = T>,
     {
         OwningRefMut {
@@ -600,7 +633,7 @@ impl<O, T: ?Sized> OwningRefMut<O, T> {
     /// }
     /// ```
     pub fn map<F, U: ?Sized>(mut self, f: F) -> OwningRef<O, U>
-        where O: StableAddress,
+        where O: AliasableAddress + StableAddress,
               F: FnOnce(&mut T) -> &U
     {
         OwningRef {
@@ -630,7 +663,7 @@ impl<O, T: ?Sized> OwningRefMut<O, T> {
     /// }
     /// ```
     pub fn map_mut<F, U: ?Sized>(mut self, f: F) -> OwningRefMut<O, U>
-        where O: StableAddress,
+        where O: AliasableAddress + StableAddress,
               F: FnOnce(&mut T) -> &mut U
     {
         OwningRefMut {
@@ -662,7 +695,7 @@ impl<O, T: ?Sized> OwningRefMut<O, T> {
     /// }
     /// ```
     pub fn try_map<F, U: ?Sized, E>(mut self, f: F) -> Result<OwningRef<O, U>, E>
-        where O: StableAddress,
+        where O: AliasableAddress + StableAddress,
               F: FnOnce(&mut T) -> Result<&U, E>
     {
         Ok(OwningRef {
@@ -694,7 +727,7 @@ impl<O, T: ?Sized> OwningRefMut<O, T> {
     /// }
     /// ```
     pub fn try_map_mut<F, U: ?Sized, E>(mut self, f: F) -> Result<OwningRefMut<O, U>, E>
-        where O: StableAddress,
+        where O: AliasableAddress + StableAddress,
               F: FnOnce(&mut T) -> Result<&mut U, E>
     {
         Ok(OwningRefMut {
@@ -709,8 +742,8 @@ impl<O, T: ?Sized> OwningRefMut<O, T> {
     /// so that the reference into it remains valid. This function is marked unsafe
     /// because the user needs to manually uphold this guarantee.
     pub unsafe fn map_owner<F, P>(self, f: F) -> OwningRefMut<P, T>
-        where O: StableAddress,
-              P: StableAddress,
+        where O: AliasableAddress + StableAddress,
+              P: AliasableAddress + StableAddress,
               F: FnOnce(O) -> P
     {
         OwningRefMut {
@@ -816,14 +849,18 @@ use std::ops::{Deref, DerefMut};
 /// implemented for common data structures. Types that implement `ToHandle` can
 /// be wrapped into an `OwningHandle` without passing a callback.
 pub struct OwningHandle<O, H>
-    where O: StableAddress, H: Deref,
+where
+    O: AliasableAddress + StableAddress,
+    H: Deref,
 {
     handle: H,
     _owner: O,
 }
 
 impl<O, H> Deref for OwningHandle<O, H>
-    where O: StableAddress, H: Deref,
+where
+    O: AliasableAddress + StableAddress,
+    H: Deref,
 {
     type Target = H::Target;
     fn deref(&self) -> &H::Target {
@@ -831,12 +868,22 @@ impl<O, H> Deref for OwningHandle<O, H>
     }
 }
 
+unsafe impl<O, H> AliasableAddress for OwningHandle<O, H>
+where
+    O: AliasableAddress + StableAddress,
+    H: AliasableAddress + StableAddress,
+{}
+
 unsafe impl<O, H> StableAddress for OwningHandle<O, H>
-    where O: StableAddress, H: StableAddress,
+where
+    O: AliasableAddress + StableAddress,
+    H: AliasableAddress + StableAddress,
 {}
 
 impl<O, H> DerefMut for OwningHandle<O, H>
-    where O: StableAddress, H: DerefMut,
+where
+    O: AliasableAddress + StableAddress,
+    H: DerefMut,
 {
     fn deref_mut(&mut self) -> &mut H::Target {
         self.handle.deref_mut()
@@ -864,7 +911,10 @@ pub trait ToHandleMut {
 }
 
 impl<O, H> OwningHandle<O, H>
-    where O: StableAddress, O::Target: ToHandle<Handle = H>, H: Deref,
+where
+    O: AliasableAddress + StableAddress,
+    O::Target: ToHandle<Handle = H>,
+    H: Deref,
 {
     /// Create a new `OwningHandle` for a type that implements `ToHandle`. For types
     /// that don't implement `ToHandle`, callers may invoke `new_with_fn`, which accepts
@@ -875,7 +925,10 @@ impl<O, H> OwningHandle<O, H>
 }
 
 impl<O, H> OwningHandle<O, H>
-    where O: StableAddress, O::Target: ToHandleMut<HandleMut = H>, H: DerefMut,
+where
+    O: AliasableAddress + StableAddress,
+    O::Target: ToHandleMut<HandleMut = H>,
+    H: DerefMut,
 {
     /// Create a new mutable `OwningHandle` for a type that implements `ToHandleMut`.
     pub fn new_mut(o: O) -> Self {
@@ -884,7 +937,9 @@ impl<O, H> OwningHandle<O, H>
 }
 
 impl<O, H> OwningHandle<O, H>
-    where O: StableAddress, H: Deref,
+where
+    O: AliasableAddress + StableAddress,
+    H: Deref,
 {
     /// Create a new OwningHandle. The provided callback will be invoked with
     /// a pointer to the object owned by `o`, and the returned value is stored
@@ -974,7 +1029,11 @@ impl<O, T: ?Sized> DerefMut for OwningRefMut<O, T> {
 
 unsafe impl<O, T: ?Sized> StableAddress for OwningRef<O, T> {}
 
+unsafe impl<O, T: ?Sized> AliasableAddress for OwningRef<O, T> {}
+
 unsafe impl<O, T: ?Sized> StableAddress for OwningRefMut<O, T> {}
+
+unsafe impl<O, T: ?Sized> AliasableAddress for OwningRefMut<O, T> {}
 
 impl<O, T: ?Sized> AsRef<T> for OwningRef<O, T> {
     fn as_ref(&self) -> &T {
@@ -1001,7 +1060,7 @@ impl<O, T: ?Sized> Borrow<T> for OwningRef<O, T> {
 }
 
 impl<O, T: ?Sized> From<O> for OwningRef<O, T>
-    where O: StableAddress,
+    where O: AliasableAddress + StableAddress,
           O: Deref<Target = T>,
 {
     fn from(owner: O) -> Self {
@@ -1010,7 +1069,7 @@ impl<O, T: ?Sized> From<O> for OwningRef<O, T>
 }
 
 impl<O, T: ?Sized> From<O> for OwningRefMut<O, T>
-    where O: StableAddress,
+    where O: AliasableAddress + StableAddress,
           O: DerefMut<Target = T>
 {
     fn from(owner: O) -> Self {
@@ -1019,7 +1078,7 @@ impl<O, T: ?Sized> From<O> for OwningRefMut<O, T>
 }
 
 impl<O, T: ?Sized> From<OwningRefMut<O, T>> for OwningRef<O, T>
-    where O: StableAddress,
+    where O: AliasableAddress + StableAddress,
           O: DerefMut<Target = T>
 {
     fn from(other: OwningRefMut<O, T>) -> Self {
@@ -1057,7 +1116,7 @@ impl<O, T: ?Sized> Debug for OwningRefMut<O, T>
 }
 
 impl<O, T: ?Sized> Clone for OwningRef<O, T>
-    where O: CloneStableAddress,
+    where O: AliasableAddress + CloneStableAddress,
 {
     fn clone(&self) -> Self {
         OwningRef {
@@ -1068,7 +1127,7 @@ impl<O, T: ?Sized> Clone for OwningRef<O, T>
 }
 
 unsafe impl<O, T: ?Sized> CloneStableAddress for OwningRef<O, T>
-    where O: CloneStableAddress {}
+    where O: AliasableAddress + CloneStableAddress {}
 
 unsafe impl<O, T: ?Sized> Send for OwningRef<O, T>
     where O: Send, for<'a> (&'a T): Send {}
@@ -1229,6 +1288,7 @@ pub type ErasedArcRef<U> = OwningRef<Arc<dyn Erased>, U>;
 pub type ErasedBoxRefMut<U> = OwningRefMut<Box<dyn Erased>, U>;
 
 #[cfg(test)]
+#[allow(clippy::blacklisted_name)]
 mod tests {
     mod owning_ref {
         use super::super::OwningRef;
