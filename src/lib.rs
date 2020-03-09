@@ -933,6 +933,54 @@ impl<O, H> OwningHandle<O, H>
     }
 }
 
+pub fn lock_mutex_in_owning_ref<'a,T,M>(m: M) -> OwningHandle<M, OwningRefMut<MutexGuard<'a,T>,T>>
+    where M: Deref<Target=Mutex<T>>, M: StableAddress
+{
+    OwningHandle::new_with_fn(m, unsafe {|m: *const Mutex<T>| 
+        MutexGuardRefMut::new(m.as_ref().unwrap().lock().unwrap())
+    })
+}
+
+pub fn try_lock_mutex_in_owning_ref<'a,M,T>(m: M) -> Result<OwningHandle<M, OwningRefMut<MutexGuard<'a, T>, T>>, PoisonError<MutexGuard<'a, T>>>
+    where M: Deref<Target=Mutex<T>>, M: StableAddress
+{
+    OwningHandle::try_new(m, unsafe {|m: *const Mutex<T>| 
+        m.as_ref().unwrap().lock().map(|guard| MutexGuardRefMut::new(guard))
+    })
+}
+
+pub fn read_lock_rwlock_in_owning_ref<'a,M,T>(m: M) -> OwningHandle<M, OwningRef<RwLockReadGuard<'a,T>,T>>
+    where M: Deref<Target=RwLock<T>>, M: StableAddress
+{
+    OwningHandle::new_with_fn(m, unsafe {|m: *const RwLock<T>| 
+        RwLockReadGuardRef::new(m.as_ref().unwrap().read().unwrap())
+    })
+}
+
+pub fn try_read_lock_rwlock_in_owning_ref<'a,M,T>(m: M) -> Result<OwningHandle<M, OwningRef<RwLockReadGuard<'a,T>,T>>, TryLockError<RwLockReadGuard<'a,T>>>
+    where M: Deref<Target=RwLock<T>>, M: StableAddress
+{
+    OwningHandle::try_new(m, unsafe {|m: *const RwLock<T>| 
+        m.as_ref().unwrap().try_read().map(|guard| RwLockReadGuardRef::new(guard))
+    })
+}
+
+pub fn write_lock_rwlock_in_owning_ref<'a,M,T>(m: M) -> OwningHandle<M, OwningRefMut<RwLockWriteGuard<'a,T>,T>>
+    where M: Deref<Target=RwLock<T>>, M: StableAddress
+{
+    OwningHandle::new_with_fn(m, unsafe {|m: *const RwLock<T>| 
+        RwLockWriteGuardRefMut::new(m.as_ref().unwrap().write().unwrap())
+    })
+}
+
+pub fn try_write_lock_rwlock_in_owning_ref<'a,M,T>(m: M) -> Result<OwningHandle<M, OwningRefMut<RwLockWriteGuard<'a,T>,T>>, TryLockError<RwLockWriteGuard<'a,T>>>
+    where M: Deref<Target=RwLock<T>>, M: StableAddress
+{
+    OwningHandle::try_new(m, unsafe {|m: *const RwLock<T>| 
+        m.as_ref().unwrap().try_write().map(|guard| RwLockWriteGuardRefMut::new(guard))
+    })
+}
+
 /////////////////////////////////////////////////////////////////////////////
 // std traits
 /////////////////////////////////////////////////////////////////////////////
@@ -1145,7 +1193,7 @@ impl<O, T: ?Sized> Hash for OwningRefMut<O, T> where T: Hash {
 use std::boxed::Box;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::sync::{MutexGuard, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{MutexGuard, RwLockReadGuard, RwLockWriteGuard, Mutex, PoisonError, RwLock, TryLockError};
 use std::cell::{Ref, RefCell, RefMut};
 
 impl<T: 'static> ToHandle for RefCell<T> {
@@ -1237,7 +1285,8 @@ mod tests {
         use std::hash::{Hash, Hasher};
         use std::collections::hash_map::DefaultHasher;
         use std::collections::HashMap;
-        use std::rc::Rc;
+        use std::{rc::Rc};
+        use crate::{write_lock_rwlock_in_owning_ref, try_read_lock_rwlock_in_owning_ref, read_lock_rwlock_in_owning_ref};
 
         #[derive(Debug, PartialEq)]
         struct Example(u32, String, [u8; 3]);
@@ -1412,6 +1461,76 @@ mod tests {
                 drop(a);
             }
         }
+
+        #[test]
+        fn raii_locks_two_levels() {
+            use super::super::{RwLockReadGuardRef};
+            use std::sync::{RwLock};
+
+      
+            {
+                let inners = [RwLock::new(0u8), RwLock::new(1u8)];
+                let array = RwLock::new(inners);
+                let array = &array;
+                {
+                    // cannot modify array while guard held.
+                    {
+                        {
+                            let _guard = {
+                                let read_array1 = RwLockReadGuardRef::new(array.read().unwrap());
+                                assert_eq!(read_array1.len(), 2);
+                                read_array1.map(|r| &r[0])
+                            };
+
+                            assert!(array.try_write().is_err());
+                        }
+
+                        assert_eq!(array.write().unwrap().len(),2)
+                    }
+
+                    // can acquire each element independently
+                    {
+                        let read_array1 = RwLockReadGuardRef::new(array.read().unwrap());
+                        let read_array1_0 = read_array1.map(|r| &r[0]);
+                        let mut read_array1_0_handle = write_lock_rwlock_in_owning_ref(read_array1_0);
+                        assert_eq!(*read_array1_0_handle, 0);
+                        *read_array1_0_handle += 2;
+                        assert_eq!(*read_array1_0_handle, 2);
+
+                        let read_array2 = RwLockReadGuardRef::new(array.read().unwrap());
+                        let read_array2_1 = read_array2.map(|r| &r[1]);
+                        let mut read_array2_1_handle = write_lock_rwlock_in_owning_ref(read_array2_1);
+                        assert_eq!(*read_array2_1_handle, 1);
+                        *read_array2_1_handle += 2;
+                        assert_eq!(*read_array2_1_handle, 3);
+                    }
+
+                    // write blocks read
+                    {
+                        let read1_0 = RwLockReadGuardRef::new(array.read().unwrap()).map(|r| &r[0]);
+                        let read1_0_handle = write_lock_rwlock_in_owning_ref(read1_0);
+                        assert_eq!(*read1_0_handle, 2);
+
+                        let read2_0 = RwLockReadGuardRef::new(array.read().unwrap()).map(|r| &r[0]);
+                        let read2_0_handle_result = try_read_lock_rwlock_in_owning_ref(read2_0);
+                        assert!(read2_0_handle_result.is_err());
+                    }
+
+                    // concurrent reads are ok
+                    {
+                        let read1_0 = RwLockReadGuardRef::new(array.read().unwrap()).map(|r| &r[0]);
+                        let read1_0_handle = read_lock_rwlock_in_owning_ref(read1_0);
+                        assert_eq!(*read1_0_handle, 2);
+
+                        let read2_0 = RwLockReadGuardRef::new(array.read().unwrap()).map(|r| &r[0]);
+                        let read2_0_handle = read_lock_rwlock_in_owning_ref(read2_0);
+                        assert_eq!(*read2_0_handle, 2);
+                    }
+                }
+                assert_eq!(*array.read().unwrap()[0].read().unwrap(), 2);
+                assert_eq!(*array.read().unwrap()[1].read().unwrap(), 3);
+            }
+    }
 
         #[test]
         fn eq() {
@@ -1835,31 +1954,37 @@ mod tests {
             {
                 let a = RefCell::new(1);
                 let a = {
-                    let a = RefMutRefMut::new(a.borrow_mut());
+                    let mut a = RefMutRefMut::new(a.borrow_mut());
                     assert_eq!(*a, 1);
+                    *a = 2;
+                    assert_eq!(*a, 2);
                     a
                 };
-                assert_eq!(*a, 1);
+                assert_eq!(*a, 2);
                 drop(a);
             }
             {
                 let a = Mutex::new(1);
                 let a = {
-                    let a = MutexGuardRefMut::new(a.lock().unwrap());
+                    let mut a = MutexGuardRefMut::new(a.lock().unwrap());
                     assert_eq!(*a, 1);
+                    *a = 2;
+                    assert_eq!(*a, 2);
                     a
                 };
-                assert_eq!(*a, 1);
+                assert_eq!(*a, 2);
                 drop(a);
             }
             {
                 let a = RwLock::new(1);
                 let a = {
-                    let a = RwLockWriteGuardRefMut::new(a.write().unwrap());
+                    let mut a = RwLockWriteGuardRefMut::new(a.write().unwrap());
                     assert_eq!(*a, 1);
+                    *a = 2;
+                    assert_eq!(*a, 2);
                     a
                 };
-                assert_eq!(*a, 1);
+                assert_eq!(*a, 2);
                 drop(a);
             }
         }
