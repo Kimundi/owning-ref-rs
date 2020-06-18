@@ -1,4 +1,5 @@
 #![warn(missing_docs)]
+#![cfg_attr(feature = "no_std", no_std)]
 
 /*!
 # An owning reference.
@@ -480,6 +481,7 @@ impl<O, T: ?Sized> OwningRef<O, T> {
     ///
     /// This can be used to safely erase the owner of any `OwningRef<O, T>`
     /// to a `OwningRef<Box<dyn Erased>, T>`.
+    #[cfg(not(feature = "no_std"))]
     pub fn map_owner_box(self) -> OwningRef<Box<O>, T> {
         OwningRef {
             reference: self.reference,
@@ -724,6 +726,7 @@ impl<O, T: ?Sized> OwningRefMut<O, T> {
     ///
     /// This can be used to safely erase the owner of any `OwningRefMut<O, T>`
     /// to a `OwningRefMut<Box<dyn Erased>, T>`.
+    #[cfg(not(feature = "no_std"))]
     pub fn map_owner_box(self) -> OwningRefMut<Box<O>, T> {
         OwningRefMut {
             reference: self.reference,
@@ -794,7 +797,7 @@ impl<O, T: ?Sized> OwningRefMut<O, T> {
 // OwningHandle
 /////////////////////////////////////////////////////////////////////////////
 
-use std::ops::{Deref, DerefMut};
+use core::ops::{Deref, DerefMut};
 
 /// `OwningHandle` is a complement to `OwningRef`. Where `OwningRef` allows
 /// consumers to pass around an owned object and a dependent reference,
@@ -937,12 +940,12 @@ impl<O, H> OwningHandle<O, H>
 // std traits
 /////////////////////////////////////////////////////////////////////////////
 
-use std::convert::From;
-use std::fmt::{self, Debug};
-use std::marker::{Send, Sync};
-use std::cmp::{Eq, PartialEq, Ord, PartialOrd, Ordering};
-use std::hash::{Hash, Hasher};
-use std::borrow::Borrow;
+use core::convert::From;
+use core::fmt::{self, Debug};
+use core::marker::{Send, Sync};
+use core::cmp::{Eq, PartialEq, Ord, PartialOrd, Ordering};
+use core::hash::{Hash, Hasher};
+use core::borrow::Borrow;
 
 impl<O, T: ?Sized> Deref for OwningRef<O, T> {
     type Target = T;
@@ -1142,11 +1145,15 @@ impl<O, T: ?Sized> Hash for OwningRefMut<O, T> where T: Hash {
 // std types integration and convenience type defs
 /////////////////////////////////////////////////////////////////////////////
 
+#[cfg(not(feature = "no_std"))]
 use std::boxed::Box;
+#[cfg(not(feature = "no_std"))]
 use std::rc::Rc;
+#[cfg(not(feature = "no_std"))]
 use std::sync::Arc;
+#[cfg(not(feature = "no_std"))]
 use std::sync::{MutexGuard, RwLockReadGuard, RwLockWriteGuard};
-use std::cell::{Ref, RefCell, RefMut};
+use core::cell::{Ref, RefCell, RefMut};
 
 impl<T: 'static> ToHandle for RefCell<T> {
     type Handle = Ref<'static, T>;
@@ -1163,15 +1170,20 @@ impl<T: 'static> ToHandleMut for RefCell<T> {
 // what to do with error results.
 
 /// Typedef of a owning reference that uses a `Box` as the owner.
+#[cfg(not(feature = "no_std"))]
 pub type BoxRef<T, U = T> = OwningRef<Box<T>, U>;
 /// Typedef of a owning reference that uses a `Vec` as the owner.
+#[cfg(not(feature = "no_std"))]
 pub type VecRef<T, U = T> = OwningRef<Vec<T>, U>;
 /// Typedef of a owning reference that uses a `String` as the owner.
+#[cfg(not(feature = "no_std"))]
 pub type StringRef = OwningRef<String, str>;
 
 /// Typedef of a owning reference that uses a `Rc` as the owner.
+#[cfg(not(feature = "no_std"))]
 pub type RcRef<T, U = T> = OwningRef<Rc<T>, U>;
 /// Typedef of a owning reference that uses a `Arc` as the owner.
+#[cfg(not(feature = "no_std"))]
 pub type ArcRef<T, U = T> = OwningRef<Arc<T>, U>;
 
 /// Typedef of a owning reference that uses a `Ref` as the owner.
@@ -1179,38 +1191,49 @@ pub type RefRef<'a, T, U = T> = OwningRef<Ref<'a, T>, U>;
 /// Typedef of a owning reference that uses a `RefMut` as the owner.
 pub type RefMutRef<'a, T, U = T> = OwningRef<RefMut<'a, T>, U>;
 /// Typedef of a owning reference that uses a `MutexGuard` as the owner.
+#[cfg(not(feature = "no_std"))]
 pub type MutexGuardRef<'a, T, U = T> = OwningRef<MutexGuard<'a, T>, U>;
 /// Typedef of a owning reference that uses a `RwLockReadGuard` as the owner.
+#[cfg(not(feature = "no_std"))]
 pub type RwLockReadGuardRef<'a, T, U = T> = OwningRef<RwLockReadGuard<'a, T>, U>;
 /// Typedef of a owning reference that uses a `RwLockWriteGuard` as the owner.
+#[cfg(not(feature = "no_std"))]
 pub type RwLockWriteGuardRef<'a, T, U = T> = OwningRef<RwLockWriteGuard<'a, T>, U>;
 
 /// Typedef of a mutable owning reference that uses a `Box` as the owner.
+#[cfg(not(feature = "no_std"))]
 pub type BoxRefMut<T, U = T> = OwningRefMut<Box<T>, U>;
 /// Typedef of a mutable owning reference that uses a `Vec` as the owner.
+#[cfg(not(feature = "no_std"))]
 pub type VecRefMut<T, U = T> = OwningRefMut<Vec<T>, U>;
 /// Typedef of a mutable owning reference that uses a `String` as the owner.
+#[cfg(not(feature = "no_std"))]
 pub type StringRefMut = OwningRefMut<String, str>;
 
 /// Typedef of a mutable owning reference that uses a `RefMut` as the owner.
 pub type RefMutRefMut<'a, T, U = T> = OwningRefMut<RefMut<'a, T>, U>;
 /// Typedef of a mutable owning reference that uses a `MutexGuard` as the owner.
+#[cfg(not(feature = "no_std"))]
 pub type MutexGuardRefMut<'a, T, U = T> = OwningRefMut<MutexGuard<'a, T>, U>;
 /// Typedef of a mutable owning reference that uses a `RwLockWriteGuard` as the owner.
+#[cfg(not(feature = "no_std"))]
 pub type RwLockWriteGuardRefMut<'a, T, U = T> = OwningRefMut<RwLockWriteGuard<'a, T>, U>;
 
+#[cfg(not(feature = "no_std"))]
 unsafe impl<'a, T: 'a> IntoErased<'a> for Box<T> {
     type Erased = Box<dyn Erased + 'a>;
     fn into_erased(self) -> Self::Erased {
         self
     }
 }
+#[cfg(not(feature = "no_std"))]
 unsafe impl<'a, T: 'a> IntoErased<'a> for Rc<T> {
     type Erased = Rc<dyn Erased + 'a>;
     fn into_erased(self) -> Self::Erased {
         self
     }
 }
+#[cfg(not(feature = "no_std"))]
 unsafe impl<'a, T: 'a> IntoErased<'a> for Arc<T> {
     type Erased = Arc<dyn Erased + 'a>;
     fn into_erased(self) -> Self::Erased {
@@ -1219,13 +1242,17 @@ unsafe impl<'a, T: 'a> IntoErased<'a> for Arc<T> {
 }
 
 /// Typedef of a owning reference that uses an erased `Box` as the owner.
+#[cfg(not(feature = "no_std"))]
 pub type ErasedBoxRef<U> = OwningRef<Box<dyn Erased>, U>;
 /// Typedef of a owning reference that uses an erased `Rc` as the owner.
+#[cfg(not(feature = "no_std"))]
 pub type ErasedRcRef<U> = OwningRef<Rc<dyn Erased>, U>;
 /// Typedef of a owning reference that uses an erased `Arc` as the owner.
+#[cfg(not(feature = "no_std"))]
 pub type ErasedArcRef<U> = OwningRef<Arc<dyn Erased>, U>;
 
 /// Typedef of a mutable owning reference that uses an erased `Box` as the owner.
+#[cfg(not(feature = "no_std"))]
 pub type ErasedBoxRefMut<U> = OwningRefMut<Box<dyn Erased>, U>;
 
 #[cfg(test)]
