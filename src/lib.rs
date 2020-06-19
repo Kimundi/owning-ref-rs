@@ -244,6 +244,9 @@ fn main() {
 ```
 */
 
+#[cfg(not(feature = "no_std"))]
+extern crate core;
+
 extern crate stable_deref_trait;
 pub use stable_deref_trait::{StableDeref as StableAddress, CloneStableDeref as CloneStableAddress};
 
@@ -1256,6 +1259,7 @@ pub type ErasedArcRef<U> = OwningRef<Arc<dyn Erased>, U>;
 pub type ErasedBoxRefMut<U> = OwningRefMut<Box<dyn Erased>, U>;
 
 #[cfg(test)]
+#[cfg(not(feature = "no_std"))]
 mod tests {
     mod owning_ref {
         use super::super::OwningRef;
