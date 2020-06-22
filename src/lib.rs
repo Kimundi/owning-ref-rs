@@ -244,8 +244,8 @@ fn main() {
 ```
 */
 
-#[cfg(not(feature = "no_std"))]
-extern crate core;
+#[cfg(feature = "no_std")]
+extern crate core as std;
 
 extern crate stable_deref_trait;
 pub use stable_deref_trait::{StableDeref as StableAddress, CloneStableDeref as CloneStableAddress};
@@ -800,7 +800,7 @@ impl<O, T: ?Sized> OwningRefMut<O, T> {
 // OwningHandle
 /////////////////////////////////////////////////////////////////////////////
 
-use core::ops::{Deref, DerefMut};
+use std::ops::{Deref, DerefMut};
 
 /// `OwningHandle` is a complement to `OwningRef`. Where `OwningRef` allows
 /// consumers to pass around an owned object and a dependent reference,
@@ -943,12 +943,12 @@ impl<O, H> OwningHandle<O, H>
 // std traits
 /////////////////////////////////////////////////////////////////////////////
 
-use core::convert::From;
-use core::fmt::{self, Debug};
-use core::marker::{Send, Sync};
-use core::cmp::{Eq, PartialEq, Ord, PartialOrd, Ordering};
-use core::hash::{Hash, Hasher};
-use core::borrow::Borrow;
+use std::convert::From;
+use std::fmt::{self, Debug};
+use std::marker::{Send, Sync};
+use std::cmp::{Eq, PartialEq, Ord, PartialOrd, Ordering};
+use std::hash::{Hash, Hasher};
+use std::borrow::Borrow;
 
 impl<O, T: ?Sized> Deref for OwningRef<O, T> {
     type Target = T;
@@ -1156,7 +1156,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 #[cfg(not(feature = "no_std"))]
 use std::sync::{MutexGuard, RwLockReadGuard, RwLockWriteGuard};
-use core::cell::{Ref, RefCell, RefMut};
+use std::cell::{Ref, RefCell, RefMut};
 
 impl<T: 'static> ToHandle for RefCell<T> {
     type Handle = Ref<'static, T>;
