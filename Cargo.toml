@@ -3,6 +3,7 @@ name = "owning_ref"
 version = "0.4.1"
 authors = ["Marvin Löbel <loebel.marvin@gmail.com>"]
 license = "MIT"
+edition = "2018"
 
 description = "A library for creating references that carry their owner with them."
 readme = "README.md"
@@ -11,5 +12,11 @@ documentation = "http://kimundi.github.io/owning-ref-rs/owning_ref/index.html"
 repository = "https://github.com/Kimundi/owning-ref-rs"
 keywords = ["reference", "sibling", "field", "owning"]
 
+[features]
+async = []
+
 [dependencies]
 stable_deref_trait = "1.0.0"
+
+[dev-dependencies]
+tokio = { version = "0.2.22", features = ["macros", "rt-threaded", "time"] }

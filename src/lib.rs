@@ -904,6 +904,25 @@ impl<O, H> OwningHandle<O, H>
         }
     }
 
+    #[cfg(feature = "async")]
+    /// Create a new OwningHandle. The provided async callback will be invoked and awaited with
+    /// a pointer to the object owned by `o`, and a Future resolving to the OwningHandle is returned.
+    pub async fn new_with_async_fn<F, Fut>(o: O, f: F) -> Self
+        where
+            F: FnOnce(*const O::Target) -> Fut,
+            Fut: Future<Output = H>,
+    {
+        let h: H;
+        {
+            h = f(o.deref() as *const O::Target).await;
+        }
+
+        OwningHandle {
+            handle: h,
+            _owner: o,
+        }
+    }
+
     /// Create a new OwningHandle. The provided callback will be invoked with
     /// a pointer to the object owned by `o`, and the returned value is stored
     /// as the object to which this `OwningHandle` will forward `Deref` and
@@ -919,6 +938,25 @@ impl<O, H> OwningHandle<O, H>
         Ok(OwningHandle {
           handle: h,
           _owner: o,
+        })
+    }
+
+    #[cfg(feature = "async")]
+    /// Create a new OwningHandle. The provided async callback will be invoked and awaited with
+    /// a pointer to the object owned by `o`, and a Future resolving to the OwningHandle is returned.
+    pub async fn try_new_async<F, Fut, E>(o: O, f: F) -> Result<Self, E>
+        where
+            F: FnOnce(*const O::Target) -> Fut,
+            Fut: Future<Output = Result<H, E>>,
+    {
+        let h: H;
+        {
+            h = f(o.deref() as *const O::Target).await?;
+        }
+
+        Ok(OwningHandle {
+            handle: h,
+            _owner: o,
         })
     }
 
@@ -1147,6 +1185,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::{MutexGuard, RwLockReadGuard, RwLockWriteGuard};
 use std::cell::{Ref, RefCell, RefMut};
+use std::future::Future;
 
 impl<T: 'static> ToHandle for RefCell<T> {
     type Handle = Ref<'static, T>;
@@ -1549,9 +1588,10 @@ mod tests {
         use super::super::OwningHandle;
         use super::super::RcRef;
         use std::rc::Rc;
-        use std::cell::RefCell;
+        use std::cell::{RefCell, RefMut};
         use std::sync::Arc;
         use std::sync::RwLock;
+        use tokio::time::Duration;
 
         #[test]
         fn owning_handle() {
@@ -1559,6 +1599,23 @@ mod tests {
             let cell = Rc::new(RefCell::new(2));
             let cell_ref = RcRef::new(cell);
             let mut handle = OwningHandle::new_with_fn(cell_ref, |x| unsafe { x.as_ref() }.unwrap().borrow_mut());
+            assert_eq!(*handle, 2);
+            *handle = 3;
+            assert_eq!(*handle, 3);
+        }
+
+        #[cfg(feature = "async")]
+        async fn new_async_handle(x: *const RefCell<i32>) -> RefMut<'static, i32> {
+            tokio::time::delay_for(Duration::from_millis(100)).await;
+            unsafe { x.as_ref() }.unwrap().borrow_mut()
+        }
+        #[cfg(feature = "async")]
+        #[tokio::test]
+        async fn owning_handle_async() {
+            use std::cell::RefCell;
+            let cell = Rc::new(RefCell::new(2));
+            let cell_ref = RcRef::new(cell);
+            let mut handle = OwningHandle::new_with_async_fn(cell_ref, new_async_handle).await;
             assert_eq!(*handle, 2);
             *handle = 3;
             assert_eq!(*handle, 3);
@@ -1592,6 +1649,47 @@ mod tests {
                 }
                 Err(())
             });
+            assert!(handle.is_err());
+        }
+
+        #[cfg(feature = "async")]
+        async fn try_async_handle_ok(x: *const RefCell<i32>) -> Result<RefMut<'static, i32>, ()> {
+            tokio::time::delay_for(Duration::from_millis(100)).await;
+            Ok(unsafe {
+                x.as_ref()
+            }.unwrap().borrow_mut())
+        }
+
+        #[cfg(feature = "async")]
+        #[tokio::test]
+        async fn try_owning_handle_async_ok() {
+            use std::cell::RefCell;
+            let cell = Rc::new(RefCell::new(2));
+            let cell_ref = RcRef::new(cell);
+            let mut handle = OwningHandle::try_new_async(cell_ref, try_async_handle_ok).await.unwrap();
+            assert_eq!(*handle, 2);
+            *handle = 3;
+            assert_eq!(*handle, 3);
+        }
+
+        #[cfg(feature = "async")]
+        async fn try_async_handle_err(x: *const RefCell<i32>) -> Result<RefMut<'static, i32>, ()> {
+            tokio::time::delay_for(Duration::from_millis(100)).await;
+            if false {
+                return Ok(unsafe {
+                    x.as_ref()
+                }.unwrap().borrow_mut())
+            }
+            Err(())
+        }
+
+        #[cfg(feature = "async")]
+        #[tokio::test]
+        async fn try_owning_handle_async_err() {
+            use std::cell::RefCell;
+            let cell = Rc::new(RefCell::new(2));
+            let cell_ref = RcRef::new(cell);
+            let handle = OwningHandle::try_new_async(cell_ref, try_async_handle_err).await;
             assert!(handle.is_err());
         }
 
