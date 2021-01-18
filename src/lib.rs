@@ -1060,8 +1060,7 @@ impl<'t, O, T: ?Sized> Debug for OwningRefMut<'t, O, T>
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         write!(f,
-               "OwningRefMut {{ owner: {:?}, reference: {:?} }}",
-               self.as_owner(),
+               "OwningRefMut {{ owner: _, reference: {:?} }}",
                &**self)
     }
 }
