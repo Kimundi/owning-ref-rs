@@ -43,7 +43,7 @@ and preventing mutable access to root containers, which in practice requires hea
 as provided by `Box<T>`, `Rc<T>`, etc.
 
 Also provided are typedefs for common owner type combinations,
-which allow for less verbose type signatures. For example, `BoxRef<T>` instead of `OwningRef<Box<T>, T>`.
+which allow for less verbose type signatures. For example, `BoxRef<'t, T>` instead of `OwningRef<'t, Box<T>, T>`.
 
 The crate also provides the more advanced `OwningHandle` type,
 which allows more freedom in bundling a dependent handle object
@@ -488,8 +488,8 @@ impl<'t, O, T: ?Sized> OwningRef<'t, O, T> {
     /// Converts `self` into a new owning reference where the owner is wrapped
     /// in an additional `Box<O>`.
     ///
-    /// This can be used to safely erase the owner of any `OwningRef<O, T>`
-    /// to a `OwningRef<Box<dyn Erased>, T>`.
+    /// This can be used to safely erase the owner of any `OwningRef<'t, O, T>`
+    /// to a `OwningRef<'t, Box<dyn Erased>, T>`.
     pub fn map_owner_box(self) -> OwningRef<'t, Box<O>, T> {
         OwningRef {
             reference: self.reference,
@@ -511,19 +511,19 @@ impl<'t, O, T: ?Sized> OwningRef<'t, O, T> {
     ///     // NB: Using the concrete types here for explicitnes.
     ///     // For less verbose code type aliases like `BoxRef` are provided.
     ///
-    ///     let owning_ref_a: OwningRef<Box<[i32; 4]>, [i32; 4]>
+    ///     let owning_ref_a: OwningRef<'_, Box<[i32; 4]>, [i32; 4]>
     ///         = OwningRef::new(Box::new([1, 2, 3, 4]));
     ///
-    ///     let owning_ref_b: OwningRef<Box<Vec<(i32, bool)>>, Vec<(i32, bool)>>
+    ///     let owning_ref_b: OwningRef<'_, Box<Vec<(i32, bool)>>, Vec<(i32, bool)>>
     ///         = OwningRef::new(Box::new(vec![(0, false), (1, true)]));
     ///
-    ///     let owning_ref_a: OwningRef<Box<[i32; 4]>, i32>
+    ///     let owning_ref_a: OwningRef<'_, Box<[i32; 4]>, i32>
     ///         = owning_ref_a.map(|a| &a[0]);
     ///
-    ///     let owning_ref_b: OwningRef<Box<Vec<(i32, bool)>>, i32>
+    ///     let owning_ref_b: OwningRef<'_, Box<Vec<(i32, bool)>>, i32>
     ///         = owning_ref_b.map(|a| &a[1].0);
     ///
-    ///     let owning_refs: [OwningRef<Box<dyn Erased>, i32>; 2]
+    ///     let owning_refs: [OwningRef<'_, Box<dyn Erased>, i32>; 2]
     ///         = [owning_ref_a.erase_owner(), owning_ref_b.erase_owner()];
     ///
     ///     assert_eq!(*owning_refs[0], 1);
@@ -741,8 +741,8 @@ impl<'t, O, T: ?Sized> OwningRefMut<'t, O, T> {
     /// Converts `self` into a new owning reference where the owner is wrapped
     /// in an additional `Box<O>`.
     ///
-    /// This can be used to safely erase the owner of any `OwningRefMut<O, T>`
-    /// to a `OwningRefMut<Box<dyn Erased>, T>`.
+    /// This can be used to safely erase the owner of any `OwningRefMut<'_, O, T>`
+    /// to a `OwningRefMut<'_, Box<dyn Erased>, T>`.
     pub fn map_owner_box(self) -> OwningRefMut<'t, Box<O>, T> {
         OwningRefMut {
             reference: self.reference,
@@ -764,19 +764,19 @@ impl<'t, O, T: ?Sized> OwningRefMut<'t, O, T> {
     ///     // NB: Using the concrete types here for explicitnes.
     ///     // For less verbose code type aliases like `BoxRef` are provided.
     ///
-    ///     let owning_ref_mut_a: OwningRefMut<Box<[i32; 4]>, [i32; 4]>
+    ///     let owning_ref_mut_a: OwningRefMut<'_, Box<[i32; 4]>, [i32; 4]>
     ///         = OwningRefMut::new(Box::new([1, 2, 3, 4]));
     ///
-    ///     let owning_ref_mut_b: OwningRefMut<Box<Vec<(i32, bool)>>, Vec<(i32, bool)>>
+    ///     let owning_ref_mut_b: OwningRefMut<'_, Box<Vec<(i32, bool)>>, Vec<(i32, bool)>>
     ///         = OwningRefMut::new(Box::new(vec![(0, false), (1, true)]));
     ///
-    ///     let owning_ref_mut_a: OwningRefMut<Box<[i32; 4]>, i32>
+    ///     let owning_ref_mut_a: OwningRefMut<'_, Box<[i32; 4]>, i32>
     ///         = owning_ref_mut_a.map_mut(|a| &mut a[0]);
     ///
-    ///     let owning_ref_mut_b: OwningRefMut<Box<Vec<(i32, bool)>>, i32>
+    ///     let owning_ref_mut_b: OwningRefMut<'_, Box<Vec<(i32, bool)>>, i32>
     ///         = owning_ref_mut_b.map_mut(|a| &mut a[1].0);
     ///
-    ///     let owning_refs_mut: [OwningRefMut<Box<dyn Erased>, i32>; 2]
+    ///     let owning_refs_mut: [OwningRefMut<'_, Box<dyn Erased>, i32>; 2]
     ///         = [owning_ref_mut_a.erase_owner(), owning_ref_mut_b.erase_owner()];
     ///
     ///     assert_eq!(*owning_refs_mut[0], 1);
@@ -1043,7 +1043,7 @@ impl<'t1: 't2, 't2, O, T: ?Sized> From<OwningRefMut<'t1, O, T>> for OwningRef<'t
     where O: StableAddress,
           O: DerefMut<Target = T>
 {
-    fn from(other: OwningRefMut<O, T>) -> Self {
+    fn from(other: OwningRefMut<'_, O, T>) -> Self {
         OwningRef {
             owner: other.owner,
             reference: other.reference,
@@ -1270,13 +1270,13 @@ mod tests {
 
         #[test]
         fn new_deref() {
-            let or: OwningRef<Box<()>, ()> = OwningRef::new(Box::new(()));
+            let or: OwningRef<'_, Box<()>, ()> = OwningRef::new(Box::new(()));
             assert_eq!(&*or, &());
         }
 
         #[test]
         fn into() {
-            let or: OwningRef<Box<()>, ()> = Box::new(()).into();
+            let or: OwningRef<'_, Box<()>, ()> = Box::new(()).into();
             assert_eq!(&*or, &());
         }
 
@@ -1485,16 +1485,16 @@ mod tests {
 
         #[test]
         fn total_erase() {
-            let a: OwningRef<Vec<u8>, [u8]>
+            let a: OwningRef<'_, Vec<u8>, [u8]>
                 = OwningRef::new(vec![]).map(|x| &x[..]);
-            let b: OwningRef<Box<[u8]>, [u8]>
+            let b: OwningRef<'_, Box<[u8]>, [u8]>
                 = OwningRef::new(vec![].into_boxed_slice()).map(|x| &x[..]);
 
-            let c: OwningRef<Rc<Vec<u8>>, [u8]> = unsafe {a.map_owner(Rc::new)};
-            let d: OwningRef<Rc<Box<[u8]>>, [u8]> = unsafe {b.map_owner(Rc::new)};
+            let c: OwningRef<'_, Rc<Vec<u8>>, [u8]> = unsafe {a.map_owner(Rc::new)};
+            let d: OwningRef<'_, Rc<Box<[u8]>>, [u8]> = unsafe {b.map_owner(Rc::new)};
 
-            let e: OwningRef<Rc<dyn Erased>, [u8]> = c.erase_owner();
-            let f: OwningRef<Rc<dyn Erased>, [u8]> = d.erase_owner();
+            let e: OwningRef<'_, Rc<dyn Erased>, [u8]> = c.erase_owner();
+            let f: OwningRef<'_, Rc<dyn Erased>, [u8]> = d.erase_owner();
 
             let _g = e.clone();
             let _h = f.clone();
@@ -1502,16 +1502,16 @@ mod tests {
 
         #[test]
         fn total_erase_box() {
-            let a: OwningRef<Vec<u8>, [u8]>
+            let a: OwningRef<'_, Vec<u8>, [u8]>
                 = OwningRef::new(vec![]).map(|x| &x[..]);
-            let b: OwningRef<Box<[u8]>, [u8]>
+            let b: OwningRef<'_, Box<[u8]>, [u8]>
                 = OwningRef::new(vec![].into_boxed_slice()).map(|x| &x[..]);
 
-            let c: OwningRef<Box<Vec<u8>>, [u8]> = a.map_owner_box();
-            let d: OwningRef<Box<Box<[u8]>>, [u8]> = b.map_owner_box();
+            let c: OwningRef<'_, Box<Vec<u8>>, [u8]> = a.map_owner_box();
+            let d: OwningRef<'_, Box<Box<[u8]>>, [u8]> = b.map_owner_box();
 
-            let _e: OwningRef<Box<dyn Erased>, [u8]> = c.erase_owner();
-            let _f: OwningRef<Box<dyn Erased>, [u8]> = d.erase_owner();
+            let _e: OwningRef<'_, Box<dyn Erased>, [u8]> = c.erase_owner();
+            let _f: OwningRef<'_, Box<dyn Erased>, [u8]> = d.erase_owner();
         }
 
         #[test]
@@ -1686,19 +1686,19 @@ mod tests {
 
         #[test]
         fn new_deref() {
-            let or: OwningRefMut<Box<()>, ()> = OwningRefMut::new(Box::new(()));
+            let or: OwningRefMut<'_, Box<()>, ()> = OwningRefMut::new(Box::new(()));
             assert_eq!(&*or, &());
         }
 
         #[test]
         fn new_deref_mut() {
-            let mut or: OwningRefMut<Box<()>, ()> = OwningRefMut::new(Box::new(()));
+            let mut or: OwningRefMut<'_, Box<()>, ()> = OwningRefMut::new(Box::new(()));
             assert_eq!(&mut *or, &mut ());
         }
 
         #[test]
         fn mutate() {
-            let mut or: OwningRefMut<Box<usize>, usize> = OwningRefMut::new(Box::new(0));
+            let mut or: OwningRefMut<'_, Box<usize>, usize> = OwningRefMut::new(Box::new(0));
             assert_eq!(&*or, &0);
             *or = 1;
             assert_eq!(&*or, &1);
@@ -1706,7 +1706,7 @@ mod tests {
 
         #[test]
         fn into() {
-            let or: OwningRefMut<Box<()>, ()> = Box::new(()).into();
+            let or: OwningRefMut<'_, Box<()>, ()> = Box::new(()).into();
             assert_eq!(&*or, &());
         }
 
@@ -1937,30 +1937,30 @@ mod tests {
 
         #[test]
         fn total_erase() {
-            let a: OwningRefMut<Vec<u8>, [u8]>
+            let a: OwningRefMut<'_, Vec<u8>, [u8]>
                 = OwningRefMut::new(vec![]).map_mut(|x| &mut x[..]);
-            let b: OwningRefMut<Box<[u8]>, [u8]>
+            let b: OwningRefMut<'_, Box<[u8]>, [u8]>
                 = OwningRefMut::new(vec![].into_boxed_slice()).map_mut(|x| &mut x[..]);
 
-            let c: OwningRefMut<Box<Vec<u8>>, [u8]> = unsafe {a.map_owner(Box::new)};
-            let d: OwningRefMut<Box<Box<[u8]>>, [u8]> = unsafe {b.map_owner(Box::new)};
+            let c: OwningRefMut<'_, Box<Vec<u8>>, [u8]> = unsafe {a.map_owner(Box::new)};
+            let d: OwningRefMut<'_, Box<Box<[u8]>>, [u8]> = unsafe {b.map_owner(Box::new)};
 
-            let _e: OwningRefMut<Box<dyn Erased>, [u8]> = c.erase_owner();
-            let _f: OwningRefMut<Box<dyn Erased>, [u8]> = d.erase_owner();
+            let _e: OwningRefMut<'_, Box<dyn Erased>, [u8]> = c.erase_owner();
+            let _f: OwningRefMut<'_, Box<dyn Erased>, [u8]> = d.erase_owner();
         }
 
         #[test]
         fn total_erase_box() {
-            let a: OwningRefMut<Vec<u8>, [u8]>
+            let a: OwningRefMut<'_, Vec<u8>, [u8]>
                 = OwningRefMut::new(vec![]).map_mut(|x| &mut x[..]);
-            let b: OwningRefMut<Box<[u8]>, [u8]>
+            let b: OwningRefMut<'_, Box<[u8]>, [u8]>
                 = OwningRefMut::new(vec![].into_boxed_slice()).map_mut(|x| &mut x[..]);
 
-            let c: OwningRefMut<Box<Vec<u8>>, [u8]> = a.map_owner_box();
-            let d: OwningRefMut<Box<Box<[u8]>>, [u8]> = b.map_owner_box();
+            let c: OwningRefMut<'_, Box<Vec<u8>>, [u8]> = a.map_owner_box();
+            let d: OwningRefMut<'_, Box<Box<[u8]>>, [u8]> = b.map_owner_box();
 
-            let _e: OwningRefMut<Box<dyn Erased>, [u8]> = c.erase_owner();
-            let _f: OwningRefMut<Box<dyn Erased>, [u8]> = d.erase_owner();
+            let _e: OwningRefMut<'_, Box<dyn Erased>, [u8]> = c.erase_owner();
+            let _f: OwningRefMut<'_, Box<dyn Erased>, [u8]> = d.erase_owner();
         }
 
         #[test]
