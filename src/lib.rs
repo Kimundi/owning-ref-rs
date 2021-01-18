@@ -793,18 +793,6 @@ impl<'t, O, T: ?Sized> OwningRefMut<'t, O, T> {
         }
     }
 
-    // TODO: wrap_owner
-
-    /// A reference to the underlying owner.
-    pub fn as_owner(&self) -> &O {
-        &self.owner
-    }
-
-    /// A mutable reference to the underlying owner.
-    pub fn as_owner_mut(&mut self) -> &mut O {
-        &mut self.owner
-    }
-
     /// Discards the reference and retrieves the owner.
     pub fn into_owner(self) -> O {
         self.owner
