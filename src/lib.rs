@@ -394,6 +394,73 @@ impl<O, T: ?Sized> OwningRef<O, T> {
         }
     }
 
+    /// Convert `self` into an optional new owning reference that points
+    /// at something reachable from the previous one.
+    ///
+    /// This can be a reference to a field of `U`, something reachable from a field of
+    /// `U`, or even something unrelated with a `'static` lifetime.
+    ///
+    /// # Example
+    /// ```
+    /// extern crate owning_ref;
+    /// use owning_ref::OwningRef;
+    ///
+    /// fn main() {
+    ///     let owning_ref = OwningRef::new(Box::new([1, 2, 3, 4]));
+    ///
+    ///     // create a owning reference that points at the
+    ///     // third element of the array.
+    ///     let owning_ref = owning_ref.filter_map(|array| {
+    ///         (array[2] == 3).then(|| &array[2])
+    ///     });
+    ///     assert_eq!(*owning_ref.unwrap(), 3);
+    /// }
+    /// ```
+    pub fn filter_map<F, U: ?Sized>(self, f: F) -> Option<OwningRef<O, U>>
+    where
+        O: StableAddress,
+        F: FnOnce(&T) -> Option<&U>,
+    {
+        Some(OwningRef {
+            reference: f(&self)?,
+            owner: self.owner,
+        })
+    }
+
+    /// Convert `self` into an optional new owning reference that points
+    /// at something reachable from the previous one.
+    ///
+    /// This can be a reference to a field of `U`, something reachable from a field of
+    /// `U`, or even something unrelated with a `'static` lifetime.
+    ///
+    /// # Example
+    /// ```
+    /// extern crate owning_ref;
+    /// use owning_ref::OwningRef;
+    ///
+    /// fn main() {
+    ///     let owning_ref = OwningRef::new(Box::new([1, 2, 3, 4]));
+    ///     let owning_ref = owning_ref.map(|array| &array[2]);
+    ///
+    ///     // create a owning reference that points at the
+    ///     // second element of the array from the owning ref that was pointing to the third
+    ///     let owning_ref = owning_ref.filter_map_with_owner(|array, _prev| {
+    ///         (array[1] == 2).then(|| &array[1])
+    ///     });
+    ///     assert_eq!(*owning_ref.unwrap(), 2);
+    /// }
+    /// ```
+    pub fn filter_map_with_owner<F, U: ?Sized>(self, f: F) -> Option<OwningRef<O, U>>
+    where
+        O: StableAddress,
+        F: for<'a> FnOnce(&'a O, &'a T) -> Option<&'a U>,
+    {
+        Some(OwningRef {
+            reference: f(&self.owner, &self)?,
+            owner: self.owner,
+        })
+    }
+
     /// Tries to convert `self` into a new owning reference that points
     /// at something reachable from the previous one.
     ///
