@@ -961,7 +961,7 @@ use std::fmt::{self, Debug};
 use std::marker::{Send, Sync};
 use std::cmp::{Eq, PartialEq, Ord, PartialOrd, Ordering};
 use std::hash::{Hash, Hasher};
-use std::borrow::Borrow;
+use std::borrow::{Borrow, BorrowMut};
 
 impl<'t, O, T: ?Sized> Deref for OwningRef<'t, O, T> {
     type Target = T;
@@ -1016,6 +1016,18 @@ impl<'t, O, T: ?Sized> AsMut<T> for OwningRefMut<'t, O, T> {
 impl<'t, O, T: ?Sized> Borrow<T> for OwningRef<'t, O, T> {
     fn borrow(&self) -> &T {
         &*self
+    }
+}
+
+impl<'t, O, T: ?Sized> Borrow<T> for OwningRefMut<'t, O, T> {
+    fn borrow(&self) -> &T {
+        &*self
+    }
+}
+
+impl<'t, O, T: ?Sized> BorrowMut<T> for OwningRefMut<'t, O, T> {
+    fn borrow_mut(&mut self) -> &mut T {
+        &mut *self
     }
 }
 
