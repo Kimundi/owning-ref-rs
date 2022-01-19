@@ -613,7 +613,7 @@ impl<'t, O, T: ?Sized> OwningRefMut<'t, O, T> {
     ///     assert_eq!(*owning_ref, 3);
     /// }
     /// ```
-    pub fn map<F, U: ?Sized>(mut self, f: F) -> OwningRef<'t, O, U>
+    pub unsafe fn map<F, U: ?Sized>(mut self, f: F) -> OwningRef<'t, O, U>
         where O: StableAddress,
               F: FnOnce(&mut T) -> &U
     {
@@ -677,7 +677,7 @@ impl<'t, O, T: ?Sized> OwningRefMut<'t, O, T> {
     ///     assert_eq!(*owning_ref.unwrap(), 3);
     /// }
     /// ```
-    pub fn try_map<F, U: ?Sized, E>(mut self, f: F) -> Result<OwningRef<'t, O, U>, E>
+    pub unsafe fn try_map<F, U: ?Sized, E>(mut self, f: F) -> Result<OwningRef<'t, O, U>, E>
         where O: StableAddress,
               F: FnOnce(&mut T) -> Result<&U, E>
     {
@@ -1046,19 +1046,6 @@ impl<'t, O, T: ?Sized> From<O> for OwningRefMut<'t, O, T>
 {
     fn from(owner: O) -> Self {
         OwningRefMut::new(owner)
-    }
-}
-
-impl<'t1: 't2, 't2, O, T: ?Sized> From<OwningRefMut<'t1, O, T>> for OwningRef<'t2, O, T>
-    where O: StableAddress,
-          O: DerefMut<Target = T>
-{
-    fn from(other: OwningRefMut<'_, O, T>) -> Self {
-        OwningRef {
-            owner: other.owner,
-            reference: other.reference,
-            marker: PhantomData,
-        }
     }
 }
 
@@ -1722,25 +1709,25 @@ mod tests {
         #[test]
         fn map_offset_ref() {
             let or: BoxRefMut<Example> = Box::new(example()).into();
-            let or: BoxRef<_, u32> = or.map(|x| &mut x.0);
+            let or: BoxRef<_, u32> = unsafe { or.map(|x| &mut x.0) };
             assert_eq!(&*or, &42);
 
             let or: BoxRefMut<Example> = Box::new(example()).into();
-            let or: BoxRef<_, u8> = or.map(|x| &mut x.2[1]);
+            let or: BoxRef<_, u8> = unsafe { or.map(|x| &mut x.2[1]) };
             assert_eq!(&*or, &2);
         }
 
         #[test]
         fn map_heap_ref() {
             let or: BoxRefMut<Example> = Box::new(example()).into();
-            let or: BoxRef<_, str> = or.map(|x| &mut x.1[..5]);
+            let or: BoxRef<_, str> = unsafe { or.map(|x| &mut x.1[..5]) };
             assert_eq!(&*or, "hello");
         }
 
         #[test]
         fn map_static_ref() {
             let or: BoxRefMut<()> = Box::new(()).into();
-            let or: BoxRef<_, str> = or.map(|_| "hello");
+            let or: BoxRef<_, str> = unsafe { or.map(|_| "hello") };
             assert_eq!(&*or, "hello");
         }
 
@@ -1823,7 +1810,7 @@ mod tests {
             let or = or.map_mut(|x| &mut x[..5]);
             let s = format!("{:?}", or);
             assert_eq!(&s,
-                       "OwningRefMut { owner: \"hello world\", reference: \"hello\" }");
+                       "OwningRefMut { owner: _, reference: \"hello\" }");
         }
 
         #[test]
@@ -1934,8 +1921,8 @@ mod tests {
         #[test]
         fn borrow() {
             let mut hash = HashMap::new();
-            let     key1 = BoxRefMut::<String>::new(Box::new("foo".to_string())).map(|s| &s[..]);
-            let     key2 = BoxRefMut::<String>::new(Box::new("bar".to_string())).map(|s| &s[..]);
+            let     key1 = BoxRefMut::<String>::new(Box::new("foo".to_string())).map_mut(|s| &mut s[..]);
+            let     key2 = BoxRefMut::<String>::new(Box::new("bar".to_string())).map_mut(|s| &mut s[..]);
 
             hash.insert(key1, 42);
             hash.insert(key2, 23);
@@ -1999,7 +1986,7 @@ mod tests {
             let x = Box::new(123_i32);
             let y: Box<dyn Any> = x;
 
-            OwningRefMut::new(y).try_map(|x| x.downcast_ref::<i32>().ok_or(())).unwrap();
+            OwningRefMut::new(y).try_map_mut(|x| x.downcast_mut::<i32>().ok_or(())).unwrap();
         }
 
         #[test]
@@ -2009,7 +1996,7 @@ mod tests {
             let x = Box::new(123_u32);
             let y: Box<dyn Any> = x;
 
-            OwningRefMut::new(y).try_map(|x| x.downcast_ref::<i32>().ok_or(())).unwrap_err();
+            OwningRefMut::new(y).try_map_mut(|x| x.downcast_mut::<i32>().ok_or(())).unwrap_err();
         }
 
         #[test]
@@ -2017,7 +2004,7 @@ mod tests {
             use super::super::BoxRef;
 
             let or: BoxRefMut<()> = Box::new(()).into();
-            let or: BoxRef<()> = or.into();
+            let or: BoxRef<()> = unsafe { or.map(|x| x) };
             assert_eq!(&*or, &());
         }
 
