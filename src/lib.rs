@@ -793,6 +793,16 @@ impl<'t, O, T: ?Sized> OwningRefMut<'t, O, T> {
         }
     }
 
+    /// A reference to the underlying owner.
+    pub unsafe fn as_owner(&self) -> &O {
+        &self.owner
+    }
+
+    /// A mutable reference to the underlying owner.
+    pub unsafe fn as_owner_mut(&mut self) -> &mut O {
+        &mut self.owner
+    }
+
     /// Discards the reference and retrieves the owner.
     pub fn into_owner(self) -> O {
         self.owner
@@ -1783,7 +1793,7 @@ mod tests {
             let or: BoxRefMut<String> = Box::new(example().1).into();
             let or = or.map_mut(|x| &mut x[..5]);
             assert_eq!(&*or, "hello");
-            assert_eq!(&**or.as_owner(), "hello world");
+            assert_eq!(&** unsafe { or.as_owner() }, "hello world");
         }
 
         #[test]
