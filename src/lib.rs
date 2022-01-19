@@ -368,6 +368,18 @@ impl<'t, O, T: ?Sized> OwningRef<'t, O, T> {
         }
     }
 
+    /// Old version of `map_with_owner`, now recognized as unsafe.
+    pub unsafe fn map_with_owner_direct<F, U: ?Sized>(self, f: F) -> OwningRef<'t, O, U>
+        where O: StableAddress,
+              F: for<'a> FnOnce(&'a O, &'a T) -> &'a U
+    {
+        OwningRef {
+            reference: f(&self.owner, &self),
+            owner: self.owner,
+            marker: PhantomData,
+        }
+    }
+
     /// Converts `self` into a new owning reference that points at something reachable
     /// from the previous one or from the owner itself.
     ///
@@ -391,8 +403,8 @@ impl<'t, O, T: ?Sized> OwningRef<'t, O, T> {
     /// }
     /// ```
     pub fn map_with_owner<F, U: ?Sized>(self, f: F) -> OwningRef<'t, O, U>
-        where O: StableAddress,
-              F: for<'a> FnOnce(&'a O, &'a T) -> &'a U
+        where O: StableAddress + Deref,
+              F: for<'a> FnOnce(&'a O::Target, &'a T) -> &'a U
     {
         OwningRef {
             reference: f(&self.owner, &self),
@@ -434,6 +446,18 @@ impl<'t, O, T: ?Sized> OwningRef<'t, O, T> {
         })
     }
 
+    /// Old version of `try_map_with_owner`, now recognized as unsafe.
+    pub unsafe fn try_map_with_owner_direct<F, U: ?Sized, E>(self, f: F) -> Result<OwningRef<'t, O, U>, E>
+        where O: StableAddress,
+              F: for<'a> FnOnce(&'a O, &'a T) -> Result<&'a U, E>
+    {
+        Ok(OwningRef {
+            reference: f(&self.owner, &self)?,
+            owner: self.owner,
+            marker: PhantomData,
+        })
+    }
+
     /// Tries to convert `self` into a new owning reference that points
     /// at something reachable from the previous one.
     ///
@@ -458,8 +482,8 @@ impl<'t, O, T: ?Sized> OwningRef<'t, O, T> {
     /// }
     /// ```
     pub fn try_map_with_owner<F, U: ?Sized, E>(self, f: F) -> Result<OwningRef<'t, O, U>, E>
-        where O: StableAddress,
-              F: for<'a> FnOnce(&'a O, &'a T) -> Result<&'a U, E>
+        where O: StableAddress + Deref,
+              F: for<'a> FnOnce(&'a O::Target, &'a T) -> Result<&'a U, E>
     {
         Ok(OwningRef {
             reference: f(&self.owner, &self)?,
