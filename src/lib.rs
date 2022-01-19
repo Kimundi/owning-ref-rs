@@ -609,7 +609,7 @@ impl<'t, O, T: ?Sized> OwningRefMut<'t, O, T> {
     ///
     ///     // create a owning reference that points at the
     ///     // third element of the array.
-    ///     let owning_ref = owning_ref_mut.map(|array| &array[2]);
+    ///     let owning_ref = unsafe { owning_ref_mut.map(|array| &array[2]) };
     ///     assert_eq!(*owning_ref, 3);
     /// }
     /// ```
@@ -671,9 +671,11 @@ impl<'t, O, T: ?Sized> OwningRefMut<'t, O, T> {
     ///
     ///     // create a owning reference that points at the
     ///     // third element of the array.
-    ///     let owning_ref = owning_ref_mut.try_map(|array| {
-    ///         if array[2] == 3 { Ok(&array[2]) } else { Err(()) }
-    ///     });
+    ///     let owning_ref = unsafe {
+    ///         owning_ref_mut.try_map(|array| {
+    ///             if array[2] == 3 { Ok(&array[2]) } else { Err(()) }
+    ///         })
+    ///     };
     ///     assert_eq!(*owning_ref.unwrap(), 3);
     /// }
     /// ```
@@ -1709,18 +1711,18 @@ mod tests {
         #[test]
         fn map_offset_ref() {
             let or: BoxRefMut<Example> = Box::new(example()).into();
-            let or: BoxRef<_, u32> = unsafe { or.map(|x| &mut x.0) };
+            let or: BoxRefMut<_, u32> = or.map_mut(|x| &mut x.0);
             assert_eq!(&*or, &42);
 
             let or: BoxRefMut<Example> = Box::new(example()).into();
-            let or: BoxRef<_, u8> = unsafe { or.map(|x| &mut x.2[1]) };
+            let or: BoxRefMut<_, u8> = or.map_mut(|x| &mut x.2[1]);
             assert_eq!(&*or, &2);
         }
 
         #[test]
         fn map_heap_ref() {
             let or: BoxRefMut<Example> = Box::new(example()).into();
-            let or: BoxRef<_, str> = unsafe { or.map(|x| &mut x.1[..5]) };
+            let or: BoxRefMut<_, str> = or.map_mut(|x| &mut x.1[..5]);
             assert_eq!(&*or, "hello");
         }
 
