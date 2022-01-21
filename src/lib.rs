@@ -369,6 +369,7 @@ impl<'t, O, T: ?Sized> OwningRef<'t, O, T> {
     }
 
     /// Old version of `map_with_owner`, now recognized as unsafe.
+    #[deprecated(since = "0.5.0", note = "unsafe function: please use map_with_owner instead")]
     pub unsafe fn map_with_owner_direct<F, U: ?Sized>(self, f: F) -> OwningRef<'t, O, U>
         where O: StableAddress,
               F: for<'a> FnOnce(&'a O, &'a T) -> &'a U
@@ -446,7 +447,18 @@ impl<'t, O, T: ?Sized> OwningRef<'t, O, T> {
         })
     }
 
+    // fn check() {
+    //     let box_i = Box::new(32);
+    //     let ref_i = &*box_i;
+    //     let ow_ref = OwningRef::new(Box::new(9));
+    //     let ow_ref : OwningRef<'static, _, _> = unsafe { ow_ref.map_owner(|_| ref_i) };
+    //     println!("{:?}", ow_ref);
+    //     drop(box_i);
+    // }
+    
+
     /// Old version of `try_map_with_owner`, now recognized as unsafe.
+    #[deprecated(since = "0.5.0", note = "unsafe function: please use try_map_with_owner instead")]
     pub unsafe fn try_map_with_owner_direct<F, U: ?Sized, E>(self, f: F) -> Result<OwningRef<'t, O, U>, E>
         where O: StableAddress,
               F: for<'a> FnOnce(&'a O, &'a T) -> Result<&'a U, E>
@@ -637,6 +649,8 @@ impl<'t, O, T: ?Sized> OwningRefMut<'t, O, T> {
     ///     assert_eq!(*owning_ref, 3);
     /// }
     /// ```
+    /// 
+    #[deprecated(since = "0.5.0", note = "unsafe function. can create aliased references")]
     pub unsafe fn map<F, U: ?Sized>(mut self, f: F) -> OwningRef<'t, O, U>
         where O: StableAddress,
               F: FnOnce(&mut T) -> &U
@@ -703,6 +717,8 @@ impl<'t, O, T: ?Sized> OwningRefMut<'t, O, T> {
     ///     assert_eq!(*owning_ref.unwrap(), 3);
     /// }
     /// ```
+    /// 
+    #[deprecated(since = "0.5.0", note = "unsafe function. can create aliased references")]
     pub unsafe fn try_map<F, U: ?Sized, E>(mut self, f: F) -> Result<OwningRef<'t, O, U>, E>
         where O: StableAddress,
               F: FnOnce(&mut T) -> Result<&U, E>
@@ -820,11 +836,13 @@ impl<'t, O, T: ?Sized> OwningRefMut<'t, O, T> {
     }
 
     /// A reference to the underlying owner.
+    #[deprecated(since = "0.5.0", note = "unsafe function. can create aliased references")]
     pub unsafe fn as_owner(&self) -> &O {
         &self.owner
     }
 
     /// A mutable reference to the underlying owner.
+    #[deprecated(since = "0.5.0", note = "unsafe function. can create aliased references")]
     pub unsafe fn as_owner_mut(&mut self) -> &mut O {
         &mut self.owner
     }
