@@ -795,6 +795,7 @@ impl<O, T: ?Sized> OwningRefMut<O, T> {
 /////////////////////////////////////////////////////////////////////////////
 
 use std::ops::{Deref, DerefMut};
+use std::future::Future;
 
 /// `OwningHandle` is a complement to `OwningRef`. Where `OwningRef` allows
 /// consumers to pass around an owned object and a dependent reference,
@@ -908,12 +909,54 @@ impl<O, H> OwningHandle<O, H>
     /// a pointer to the object owned by `o`, and the returned value is stored
     /// as the object to which this `OwningHandle` will forward `Deref` and
     /// `DerefMut`.
+    pub async fn new_with_async_fn<F, T>(o: O, f: F) -> Self
+        where
+            F: FnOnce(*const O::Target) -> T,
+            T: Future<Output = H>,
+    {
+        let h: H;
+        {
+            let r = f(o.deref() as *const O::Target);
+            h = r.await;
+        }
+
+        OwningHandle {
+          handle: h,
+          _owner: o,
+        }
+    }
+
+    /// Create a new OwningHandle. The provided callback will be invoked with
+    /// a pointer to the object owned by `o`, and the returned value is stored
+    /// as the object to which this `OwningHandle` will forward `Deref` and
+    /// `DerefMut`.
     pub fn try_new<F, E>(o: O, f: F) -> Result<Self, E>
         where F: FnOnce(*const O::Target) -> Result<H, E>
     {
         let h: H;
         {
             h = f(o.deref() as *const O::Target)?;
+        }
+
+        Ok(OwningHandle {
+          handle: h,
+          _owner: o,
+        })
+    }
+
+    /// Create a new OwningHandle. The provided callback will be invoked with
+    /// a pointer to the object owned by `o`, and the returned value is stored
+    /// as the object to which this `OwningHandle` will forward `Deref` and
+    /// `DerefMut`.
+    pub async fn try_new_async<F, E, T>(o: O, f: F) -> Result<Self, E>
+        where
+            F: FnOnce(*const O::Target) -> T,
+            T: Future<Output = Result<H, E>>,
+    {
+        let h: H;
+        {
+            let r = f(o.deref() as *const O::Target);
+            h = r.await?;
         }
 
         Ok(OwningHandle {
@@ -1564,6 +1607,17 @@ mod tests {
             assert_eq!(*handle, 3);
         }
 
+        #[tokio::test]
+        async fn owning_handle_async() {
+            use std::cell::RefCell;
+            let cell = Rc::new(RefCell::new(2));
+            let cell_ref = RcRef::new(cell);
+            let mut handle = OwningHandle::new_with_async_fn(cell_ref, |x| async move { unsafe { x.as_ref() }.unwrap().borrow_mut() }).await;
+            assert_eq!(*handle, 2);
+            *handle = 3;
+            assert_eq!(*handle, 3);
+        }
+
         #[test]
         fn try_owning_handle_ok() {
             use std::cell::RefCell;
@@ -1574,6 +1628,21 @@ mod tests {
                     x.as_ref()
                 }.unwrap().borrow_mut())
             }).unwrap();
+            assert_eq!(*handle, 2);
+            *handle = 3;
+            assert_eq!(*handle, 3);
+        }
+
+        #[tokio::test]
+        async fn try_owning_handle_ok_async() {
+            use std::cell::RefCell;
+            let cell = Rc::new(RefCell::new(2));
+            let cell_ref = RcRef::new(cell);
+            let mut handle = OwningHandle::try_new_async::<_, (), _>(cell_ref, |x| async move {
+                Ok(unsafe {
+                    x.as_ref()
+                }.unwrap().borrow_mut())
+            }).await.unwrap();
             assert_eq!(*handle, 2);
             *handle = 3;
             assert_eq!(*handle, 3);
@@ -1595,6 +1664,22 @@ mod tests {
             assert!(handle.is_err());
         }
 
+        #[tokio::test]
+        async fn try_owning_handle_err_async() {
+            use std::cell::RefCell;
+            let cell = Rc::new(RefCell::new(2));
+            let cell_ref = RcRef::new(cell);
+            let handle = OwningHandle::try_new_async::<_, (), _>(cell_ref, |x| async move {
+                if false {
+                    return Ok(unsafe {
+                        x.as_ref()
+                    }.unwrap().borrow_mut())
+                }
+                Err(())
+            }).await;
+            assert!(handle.is_err());
+        }
+
         #[test]
         fn nested() {
             use std::cell::RefCell;
@@ -1605,6 +1690,23 @@ mod tests {
                 let curr = RcRef::new(complex);
                 let curr = OwningHandle::new_with_fn(curr, |x| unsafe { x.as_ref() }.unwrap().borrow_mut());
                 let mut curr = OwningHandle::new_with_fn(curr, |x| unsafe { x.as_ref() }.unwrap().try_write().unwrap());
+                assert_eq!(*curr, "someString");
+                *curr = "someOtherString";
+                curr
+            };
+            assert_eq!(*result, "someOtherString");
+        }
+
+        #[tokio::test]
+        async fn nested_async() {
+            use std::cell::RefCell;
+            use std::sync::{Arc, RwLock};
+
+            let result = {
+                let complex = Rc::new(RefCell::new(Arc::new(RwLock::new("someString"))));
+                let curr = RcRef::new(complex);
+                let curr = OwningHandle::new_with_async_fn(curr, |x| async move {unsafe { x.as_ref() }.unwrap().borrow_mut()}).await;
+                let mut curr = OwningHandle::new_with_async_fn(curr, |x| async move {unsafe { x.as_ref() }.unwrap().try_write().unwrap()}).await;
                 assert_eq!(*curr, "someString");
                 *curr = "someOtherString";
                 curr
@@ -1639,6 +1741,20 @@ mod tests {
                 let curr = RcRef::new(complex);
                 let curr = OwningHandle::new_with_fn(curr, |x| unsafe { x.as_ref() }.unwrap().borrow_mut());
                 let mut curr = OwningHandle::new_with_fn(curr, |x| unsafe { x.as_ref() }.unwrap().try_write().unwrap());
+                assert_eq!(*curr, "someString");
+                *curr = "someOtherString";
+                curr
+            };
+            assert_eq!(*result, "someOtherString");
+        }
+
+        #[tokio::test]
+        async fn owning_handle_safe_2_async() {
+            let result = {
+                let complex = Rc::new(RefCell::new(Arc::new(RwLock::new("someString"))));
+                let curr = RcRef::new(complex);
+                let curr = OwningHandle::new_with_async_fn(curr, |x| async move { unsafe { x.as_ref() }.unwrap().borrow_mut()}).await;
+                let mut curr = OwningHandle::new_with_async_fn(curr, |x| async move { unsafe { x.as_ref() }.unwrap().try_write().unwrap()}).await;
                 assert_eq!(*curr, "someString");
                 *curr = "someOtherString";
                 curr
